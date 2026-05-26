@@ -117,7 +117,7 @@ export default async function odooSyncJob(container: MedusaContainer) {
         const brandOdooId = odooProduct.custom_brand_id?.[0] || odooProduct.brand_id?.[0] || null;
         // Build brand image URL from Odoo custom.product.brand model
         const brandImageUrl = brandOdooId
-          ? `https://oskarllc-new-27289548.dev.odoo.com/web/image/custom.product.brand/${brandOdooId}/image_1920`
+          ? `${process.env.ODOO_URL?.replace(/\/$/, '') || "https://oskarllc-new-31031096.dev.odoo.com"}/web/image/custom.product.brand/${brandOdooId}/image_1920`
           : null;
 
         if (brandName && typeof brandName === "string") {

@@ -363,10 +363,10 @@ class OdooSyncService {
   constructor() {
     // Use hardcoded config since env vars aren't loading in MedusaJS exec context
     this.config = {
-      url: "https://oskarllc-new-27289548.dev.odoo.com",
-      dbName: "oskarllc-new-27289548",
-      username: "SYG",
-      password: "fa8410bdf3264b91ea393b9f8341626a98ca262a",
+      url: process.env.ODOO_URL?.replace(/\/$/, '') || "https://oskarllc-new-31031096.dev.odoo.com",
+      dbName: process.env.ODOO_DB_NAME || "oskarllc-new-31031096",
+      username: process.env.ODOO_USERNAME || "SYG",
+      password: process.env.ODOO_API_KEY || "2a420f7cb6d0c1c8f73368131f025f638c30704e",
     }
   }
 
