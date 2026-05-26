@@ -41,7 +41,7 @@ import OdooSyncService, {
 
 const BATCH_SIZE = 50          // Products per batch from Odoo
 const MAX_PRODUCTS = 4000      // Safety limit - increased to get more products
-const ODOO_BASE_URL = process.env.ODOO_URL || "https://oskarllc-new-27289548.dev.odoo.com"
+const ODOO_BASE_URL = process.env.ODOO_URL || "https://oskarllc-new-31031096.dev.odoo.com"
 const DEFAULT_CURRENCY_CODE = "omr"    // Default currency (from Odoo)
 const DEFAULT_CURRENCY_DECIMALS = 3    // OMR/KWD have 3 decimal places
 

@@ -8,8 +8,8 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import https from "https"
 
 const ODOO_CONFIG = {
-  url: process.env.ODOO_URL || "https://oskarllc-new-27289548.dev.odoo.com",
-  db: process.env.ODOO_DB_NAME || "oskarllc-new-27289548",
+  url: process.env.ODOO_URL || "https://oskarllc-new-31031096.dev.odoo.com",
+  db: process.env.ODOO_DB_NAME || "oskarllc-new-31031096",
   username: process.env.ODOO_USERNAME || "SYG",
   password: process.env.ODOO_PASSWORD || "S123456",
 }

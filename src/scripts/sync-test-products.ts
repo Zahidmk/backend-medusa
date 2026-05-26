@@ -17,7 +17,7 @@ import OdooSyncService, {
   OdooTag,
 } from "../modules/odoo-sync/service"
 
-const ODOO_BASE_URL = process.env.ODOO_URL || "https://oskarllc-new-27289548.dev.odoo.com"
+const ODOO_BASE_URL = process.env.ODOO_URL || "https://oskarllc-new-31031096.dev.odoo.com"
 
 function slugify(text: string): string {
   return text

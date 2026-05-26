@@ -11,8 +11,8 @@ import type { IncomingMessage } from "http"
 
 // Direct Odoo config
 const ODOO_CONFIG = {
-    url: 'https://oskarllc-new-27289548.dev.odoo.com',
-    db: 'oskarllc-new-27289548',
+    url: 'https://oskarllc-new-31031096.dev.odoo.com',
+    db: 'oskarllc-new-31031096',
     username: 'SYG',
     api_key: 'fa8410bdf3264b91ea393b9f8341626a98ca262a'
 };

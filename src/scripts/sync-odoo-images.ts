@@ -22,8 +22,8 @@ interface ProductWithImage {
 }
 
 // Odoo configuration
-const ODOO_URL = process.env.ODOO_URL || "https://oskarllc-new-27289548.dev.odoo.com"
-const ODOO_DB = process.env.ODOO_DB_NAME || "oskarllc-new-27289548"
+const ODOO_URL = process.env.ODOO_URL || "https://oskarllc-new-31031096.dev.odoo.com"
+const ODOO_DB = process.env.ODOO_DB_NAME || "oskarllc-new-31031096"
 const ODOO_USERNAME = process.env.ODOO_USERNAME || "SYG"
 const ODOO_PASSWORD = process.env.ODOO_API_KEY || process.env.ODOO_PASSWORD || "S123456"
 

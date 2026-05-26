@@ -20,7 +20,7 @@ import OdooSyncService, { OdooBrand, OdooPublicCategory } from "../modules/odoo-
 //  CONFIG
 // ─────────────────────────────────────────────────
 
-const ODOO_BASE_URL = process.env.ODOO_URL || "https://oskarllc-new-27289548.dev.odoo.com"
+const ODOO_BASE_URL = process.env.ODOO_URL || "https://oskarllc-new-31031096.dev.odoo.com"
 
 // Where to save images on the server
 const BRANDS_UPLOAD_DIR = path.join(process.cwd(), "static", "uploads", "brands")
