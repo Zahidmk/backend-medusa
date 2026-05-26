@@ -326,8 +326,9 @@ async function main() {
 
         // ── Check if already exists ──
         if (existingOdooIds.has(odooIdStr)) {
-          // Update metadata only (fast)
+          // Update metadata + thumbnail if missing (fast)
           const existingMedusaId = existingOdooIds.get(odooIdStr);
+          const thumbUrl = `${ODOO_CONFIG.url}/web/image/product.template/${product.id}/image_1920`;
           await db.query(`
             UPDATE product
             SET metadata = metadata ||
@@ -336,12 +337,14 @@ async function main() {
                 'odoo_stock', $3::int,
                 'synced_at', now()::text
               ),
+              thumbnail = COALESCE(NULLIF(thumbnail, ''), $4),
               updated_at = NOW()
             WHERE id = $1
           `, [
             existingMedusaId,
             product.write_date || null,
             Math.floor(product.qty_available || 0),
+            thumbUrl,
           ]);
           totalUpdated++;
           continue;
@@ -368,6 +371,9 @@ async function main() {
 
         // ── Price (KWD fils) ──
         const priceKwd = Math.round((product.list_price || 0) * CURRENCY_MULTIPLIER);
+
+        // ── Thumbnail URL (direct Odoo image endpoint — no download needed) ──
+        const thumbnailUrl = `${ODOO_CONFIG.url}/web/image/product.template/${product.id}/image_1920`;
 
         // ── Full metadata ──
         const metadata = JSON.stringify({
@@ -406,12 +412,12 @@ async function main() {
 
           await db.query(`
             INSERT INTO product (
-              id, title, handle, subtitle, description, status,
+              id, title, handle, subtitle, description, thumbnail, status,
               is_giftcard, discountable, weight, metadata,
               created_at, updated_at
             ) VALUES (
-              $1, $2, $3, $4, $5, $6,
-              false, true, $7, $8::jsonb,
+              $1, $2, $3, $4, $5, $6, $7,
+              false, true, $8, $9::jsonb,
               NOW(), NOW()
             )
           `, [
