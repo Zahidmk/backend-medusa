@@ -73,23 +73,43 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       return res.status(401).json({ success: false, error: "Failed to authenticate with Odoo" })
     }
 
-    // Fetch ALL products from Odoo
-    const odooProducts = await odooJsonRpc({
-      service: "object",
-      method: "execute_kw",
-      args: [
-        ODOO_CONFIG.db,
-        uid,
-        ODOO_CONFIG.password,
-        "product.product",
-        "search_read",
-        [[["sale_ok", "=", true]]],
-        {
-          fields: ["id", "name", "default_code", "list_price", "barcode", "categ_id", "qty_available", "image_1920"],
-          limit: 1000,
-        },
-      ],
-    })
+    // Fetch ALL products from Odoo (paginate to get all 6000+)
+    const allOdooProducts: any[] = []
+    let offset = 0
+    const pageSize = 500
+    let hasMore = true
+
+    while (hasMore) {
+      console.log(`[Odoo Sync] Fetching products page offset=${offset}...`)
+      const pageProducts = await odooJsonRpc({
+        service: "object",
+        method: "execute_kw",
+        args: [
+          ODOO_CONFIG.db,
+          uid,
+          ODOO_CONFIG.password,
+          "product.product",
+          "search_read",
+          [[["sale_ok", "=", true]]],
+          {
+            fields: ["id", "name", "default_code", "list_price", "barcode", "categ_id", "qty_available", "image_1920"],
+            limit: pageSize,
+            offset: offset,
+          },
+        ],
+      })
+
+      if (!pageProducts || pageProducts.length === 0) {
+        hasMore = false
+      } else {
+        allOdooProducts.push(...pageProducts)
+        offset += pageSize
+        console.log(`[Odoo Sync] Fetched ${pageProducts.length} products. Total so far: ${allOdooProducts.length}`)
+      }
+    }
+
+    console.log(`[Odoo Sync] Total products fetched from Odoo: ${allOdooProducts.length}`)
+    const odooProducts = allOdooProducts
 
     // Get existing products
     const existingProducts = await pool.query("SELECT id, handle, metadata FROM product")
@@ -106,8 +126,19 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     let imported = 0
     let skipped = 0
+    const batchSize = 50
+    const totalProducts = odooProducts.length
 
-    for (const product of odooProducts) {
+    console.log(`[Odoo Sync] Starting import of ${totalProducts} products...`)
+
+    for (let i = 0; i < odooProducts.length; i++) {
+      const product = odooProducts[i]
+
+      // Log progress every 50 products
+      if (i % batchSize === 0) {
+        console.log(`[Odoo Sync] Progress: ${i}/${totalProducts} (${Math.round((i / totalProducts) * 100)}%)`)
+      }
+
       // Skip if already imported
       if (existingOdooIds.has(product.id)) {
         skipped++
@@ -181,6 +212,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         console.error(`Failed to import ${product.name}:`, error.message)
       }
     }
+
+    console.log(`[Odoo Sync] Import complete! Imported ${imported}, skipped ${skipped}`)
 
     await pool.end()
 
