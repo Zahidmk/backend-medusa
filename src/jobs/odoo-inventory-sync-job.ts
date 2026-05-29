@@ -29,19 +29,20 @@ export default async function odooInventorySyncJob(container: MedusaContainer) {
   logger.info("[Odoo Inventory Sync] Fetching stock from Odoo...")
 
   try {
-    const stockData = await odooSyncService.fetchVariantStock(10000)
+    const stockData = await odooSyncService.fetchInventory()
     
     if (!stockData || stockData.length === 0) {
       logger.info("[Odoo Inventory Sync] No stock data returned from Odoo.")
       return
     }
 
-    logger.info(`[Odoo Inventory Sync] Fetched ${stockData.length} stock records from Odoo.`)
+    logger.info(`[Odoo Inventory Sync] Fetched ${stockData.length} stock quant records from Odoo.`)
 
     const odooStockMap = new Map<string, number>()
     for (const item of stockData) {
-      if (item.default_code) {
-        odooStockMap.set(item.default_code, item.qty_available || 0)
+      if (item.sku) {
+        const currentQty = odooStockMap.get(item.sku) || 0
+        odooStockMap.set(item.sku, currentQty + (item.quantity || 0))
       }
     }
 

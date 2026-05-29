@@ -15,15 +15,16 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
 
   try {
     console.log("[Sync Inventory] Fetching stock from Odoo...")
-    // Fetch variant stock from Odoo
-    const stockData = await odooService.fetchVariantStock(10000)
-    console.log(`[Sync Inventory] Fetched ${stockData.length} stock records from Odoo.`)
+    // Fetch variant stock from Odoo stock.quant
+    const stockData = await odooService.fetchInventory()
+    console.log(`[Sync Inventory] Fetched ${stockData.length} stock quant records from Odoo.`)
 
     // Create a map by SKU
     const odooStockMap = new Map<string, number>()
     for (const item of stockData) {
-      if (item.default_code) {
-        odooStockMap.set(item.default_code, item.qty_available || 0)
+      if (item.sku) {
+        const currentQty = odooStockMap.get(item.sku) || 0
+        odooStockMap.set(item.sku, currentQty + (item.quantity || 0))
       }
     }
 

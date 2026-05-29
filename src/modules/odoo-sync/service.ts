@@ -739,14 +739,34 @@ class OdooSyncService {
   /**
    * Fetch stock quant records
    */
-  async fetchInventory(): Promise<OdooStockQuant[]> {
+  async fetchInventory(): Promise<any[]> {
     await this.ensureAuth()
-    return this.searchRead(
+    
+    // First fetch stock quants
+    const quants = await this.searchRead(
       "stock.quant",
-      [["quantity", ">", 0]],
+      [["quantity", ">", 0], ["location_id.usage", "=", "internal"]],
       ["id", "product_id", "location_id", "quantity", "reserved_quantity"],
-      2000
-    ) as Promise<OdooStockQuant[]>
+      10000
+    )
+    
+    if (!quants || quants.length === 0) return []
+    
+    // Extract unique product variant IDs
+    const productIds = [...new Set(quants.map((q: any) => q.product_id[0]))]
+    
+    // Fetch SKUs (default_code) for these products
+    const products = await this.read("product.product", productIds as number[], ["id", "default_code"])
+    const skuMap = new Map()
+    for (const p of products) {
+      skuMap.set(p.id, p.default_code)
+    }
+    
+    // Attach SKU to the quants
+    return quants.map((q: any) => ({
+      ...q,
+      sku: skuMap.get(q.product_id[0]) || false
+    }))
   }
 
   /**
