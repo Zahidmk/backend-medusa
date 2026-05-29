@@ -1,205 +1,81 @@
 /**
- * Odoo Inventory Sync Job (v2 — Extended Fields)
+ * Odoo Inventory Auto-Sync Job
  *
- * Runs every 15 minutes. Syncs inventory quantities from Odoo
- * including qty_available, forecasted_qty, incoming_qty, outgoing_qty.
- *
- * Uses the OdooSyncService for consistent Odoo communication.
+ * Runs every 15 minutes. Fetches stock quantities for ALL variants from Odoo
+ * and updates the Medusa inventory levels.
+ * Odoo stock moves do NOT change product write_date, so this is necessary
+ * unless Odoo webhooks are perfectly configured.
  */
-
 import { MedusaContainer } from "@medusajs/framework/types"
-import OdooSyncService from "../modules/odoo-sync/service"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 
-interface OdooVariantStock {
-  id: number
-  default_code: string | false
-  name: string
-  qty_available: number
-  virtual_available: number
-  incoming_qty: number
-  outgoing_qty: number
-  free_qty: number
-}
+export default async function odooInventorySyncJob(container: MedusaContainer) {
+  const logger = container.resolve(ContainerRegistrationKeys.LOGGER)
+  const pgConnection = container.resolve(ContainerRegistrationKeys.PG_CONNECTION)
 
-const STOCK_FIELDS = [
-  "id",
-  "default_code",
-  "name",
-  "qty_available",
-  "virtual_available",
-  "incoming_qty",
-  "outgoing_qty",
-  "free_qty",
-]
-
-export default async function odooInventorySyncJob(
-  container: MedusaContainer
-) {
-  const logger = container.resolve("logger")
-  logger.info("📦 [Inventory Job] Starting Odoo inventory sync...")
-
-  const odoo = new OdooSyncService()
-  if (!odoo.isConfigured()) {
-    logger.warn("⚠️  Odoo not configured, skipping inventory sync")
+  let odooSyncService: any
+  try {
+    odooSyncService = container.resolve("odoo_sync")
+  } catch {
+    logger.warn("[Odoo Inventory Sync] OdooSyncService not registered, skipping.")
     return
   }
 
+  if (!odooSyncService.isConfigured?.()) {
+    logger.warn("[Odoo Inventory Sync] Odoo not configured, skipping.")
+    return
+  }
+
+  logger.info("[Odoo Inventory Sync] Fetching stock from Odoo...")
+
   try {
-    const authOk = await odoo.authenticate()
-    if (!authOk) {
-      logger.warn("[Inventory Job] Could not authenticate with Odoo")
+    const stockData = await odooSyncService.fetchVariantStock(10000)
+    
+    if (!stockData || stockData.length === 0) {
+      logger.info("[Odoo Inventory Sync] No stock data returned from Odoo.")
       return
     }
 
-    // Fetch all active product variants with stock fields
-    const odooVariants: OdooVariantStock[] = await odoo.fetchVariantStock(1000)
+    logger.info(`[Odoo Inventory Sync] Fetched ${stockData.length} stock records from Odoo.`)
 
-    logger.info(
-      `[Inventory Job] Fetched ${odooVariants.length} variants from Odoo`
-    )
-
-    // Build SKU → stock map
-    const odooInventory = new Map<
-      string,
-      {
-        qty: number
-        forecasted: number
-        incoming: number
-        outgoing: number
-        freeQty: number
-        odooId: number
-        name: string
-      }
-    >()
-    for (const v of odooVariants) {
-      const sku =
-        typeof v.default_code === "string"
-          ? v.default_code
-          : `ODOO-${v.id}`
-      odooInventory.set(sku, {
-        qty: Math.max(0, Math.floor(v.qty_available)),
-        forecasted: Math.max(0, Math.floor(v.virtual_available)),
-        incoming: Math.max(0, Math.floor(v.incoming_qty)),
-        outgoing: Math.max(0, Math.floor(v.outgoing_qty)),
-        freeQty: Math.max(0, Math.floor(v.free_qty)),
-        odooId: v.id,
-        name: v.name,
-      })
-    }
-
-    // Get Medusa services
-    const productModuleService = container.resolve("product")
-    const inventoryModuleService = container.resolve("inventory")
-    const stockLocationService = container.resolve("stock_location")
-
-    // Get existing products with variants
-    const existingProducts = await productModuleService.listProducts(
-      {},
-      {
-        select: ["id", "handle", "metadata"],
-        relations: ["variants"],
-        take: 5000,
-      }
-    )
-
-    // Get inventory items
-    const inventoryItems = await inventoryModuleService.listInventoryItems(
-      {},
-      { take: 5000 }
-    )
-    const inventoryItemMap = new Map<string, any>()
-    for (const item of inventoryItems) {
-      if (item.sku) inventoryItemMap.set(item.sku, item)
-    }
-
-    // Get default location
-    const locations = await stockLocationService.listStockLocations({})
-    if (locations.length === 0) {
-      logger.warn("[Inventory Job] No stock locations found")
-      return
-    }
-    const location = locations[0]
-
-    let updatedCount = 0
-    let metadataUpdated = 0
-    let errorCount = 0
-
-    for (const product of existingProducts) {
-      for (const variant of product.variants || []) {
-        const sku = variant.sku
-        if (!sku) continue
-
-        const odooStock = odooInventory.get(sku)
-        if (!odooStock) continue
-
-        try {
-          // 1) Update Medusa inventory levels
-          const inventoryItem = inventoryItemMap.get(sku)
-          if (inventoryItem) {
-            const levels = await inventoryModuleService.listInventoryLevels({
-              inventory_item_id: inventoryItem.id,
-              location_id: location.id,
-            })
-
-            if (levels.length > 0) {
-              await inventoryModuleService.updateInventoryLevels({
-                inventory_item_id: inventoryItem.id,
-                location_id: location.id,
-                stocked_quantity: odooStock.qty,
-              })
-            } else {
-              await inventoryModuleService.createInventoryLevels({
-                inventory_item_id: inventoryItem.id,
-                location_id: location.id,
-                stocked_quantity: odooStock.qty,
-              })
-            }
-            updatedCount++
-          }
-
-          // 2) Also store extended stock info in product metadata
-          const existingMeta = (product.metadata as Record<string, any>) || {}
-          const stockMeta = {
-            ...existingMeta,
-            stock_qty: odooStock.qty,
-            stock_forecasted: odooStock.forecasted,
-            stock_incoming: odooStock.incoming,
-            stock_outgoing: odooStock.outgoing,
-            stock_free_qty: odooStock.freeQty,
-            stock_synced_at: new Date().toISOString(),
-          }
-
-          // Only update metadata if stock values changed
-          if (
-            existingMeta.stock_qty !== odooStock.qty ||
-            existingMeta.stock_forecasted !== odooStock.forecasted
-          ) {
-            await productModuleService.updateProducts(product.id, {
-              metadata: stockMeta,
-            })
-            metadataUpdated++
-          }
-        } catch (error: any) {
-          errorCount++
-          if (errorCount <= 5) {
-            logger.warn(
-              `[Inventory Job] Error updating ${sku}: ${error.message}`
-            )
-          }
-        }
+    const odooStockMap = new Map<string, number>()
+    for (const item of stockData) {
+      if (item.default_code) {
+        odooStockMap.set(item.default_code, item.qty_available || 0)
       }
     }
 
-    logger.info(
-      `✅ [Inventory Job] Completed: ${updatedCount} levels updated, ${metadataUpdated} metadata updated, ${errorCount} errors`
-    )
+    // Get all inventory items with their current level quantities
+    const res = await pgConnection.raw(`
+      SELECT ii.id as inventory_item_id, ii.sku, il.id as level_id, il.stocked_quantity
+      FROM inventory_item ii
+      JOIN inventory_level il ON il.inventory_item_id = ii.id
+      WHERE ii.deleted_at IS NULL AND il.deleted_at IS NULL
+    `)
+
+    let updated = 0
+    
+    for (const row of res.rows) {
+      if (!row.sku) continue
+      
+      const newQty = odooStockMap.get(row.sku)
+      if (newQty !== undefined && newQty !== Number(row.stocked_quantity)) {
+        await pgConnection.raw(
+          `UPDATE inventory_level SET stocked_quantity = ?, updated_at = NOW() WHERE id = ?`,
+          [newQty, row.level_id]
+        )
+        updated++
+      }
+    }
+
+    logger.info(`[Odoo Inventory Sync] Completed. Updated ${updated} inventory levels.`)
+    
   } catch (error: any) {
-    logger.error(`[Inventory Job] Error: ${error.message}`)
+    logger.error(`[Odoo Inventory Sync] Fatal error: ${error.message}`)
   }
 }
 
-// Job configuration — run every 15 minutes
 export const config = {
   name: "odoo-inventory-sync",
-  schedule: "*/15 * * * *",
+  schedule: "*/15 * * * *", // Every 15 minutes
 }
