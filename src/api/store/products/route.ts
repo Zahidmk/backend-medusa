@@ -40,13 +40,43 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       params.push(searchTerm, searchTerm)
     }
 
+    // Filter by ID
+    const idParams: string[] = []
+    Object.keys(req.query).forEach(key => {
+      if (key === "id[]" || key === "id") {
+        const val = req.query[key]
+        if (Array.isArray(val)) idParams.push(...(val as string[]))
+        else idParams.push(val as string)
+      }
+    })
+    if (idParams.length > 0) {
+      const placeholders = idParams.map(() => "?").join(",")
+      conditions.push(`p.id IN (${placeholders})`)
+      params.push(...idParams)
+    }
+
     // Filter by handle
     if (handle) {
       conditions.push("p.handle = ?")
       params.push(handle)
     }
 
-    // Filter by collection
+    // Filter by collection ID
+    const collParams: string[] = []
+    Object.keys(req.query).forEach(key => {
+      if (key === "collection_id[]" || key === "collection_id") {
+        const val = req.query[key]
+        if (Array.isArray(val)) collParams.push(...(val as string[]))
+        else collParams.push(val as string)
+      }
+    })
+    if (collParams.length > 0) {
+      const placeholders = collParams.map(() => "?").join(",")
+      conditions.push(`p.collection_id IN (${placeholders})`)
+      params.push(...collParams)
+    }
+
+    // Filter by collection handle
     if (collectionHandle) {
       conditions.push(
         `p.id IN (
@@ -84,9 +114,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const countResult = await pgConnection.raw(countQuery, params)
     const total = parseInt(countResult.rows?.[0]?.total || "0")
 
-    // Fetch products with their variants and prices
+    // Fetch products (without variants first - get unique products)
     const productsQuery = `
-      SELECT DISTINCT ON (p.id)
+      SELECT DISTINCT
         p.id,
         p.title,
         p.handle,
@@ -95,28 +125,23 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         p.description,
         p.metadata,
         p.created_at,
-        pv.id as variant_id,
-        pv.sku,
-        pp.amount as price,
-        pp.currency_code
+        p.collection_id
       FROM product p
-      LEFT JOIN product_variant pv ON pv.product_id = p.id AND pv.deleted_at IS NULL
-      LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id
-      LEFT JOIN price pp ON pp.price_set_id = pvps.price_set_id AND pp.currency_code = ?
       WHERE ${conditions.join(" AND ")}
-      ORDER BY p.id, p.created_at DESC
+      ORDER BY p.created_at DESC
       LIMIT ? OFFSET ?
     `
     
     const productsResult = await pgConnection.raw(
       productsQuery,
-      [currency.toUpperCase(), ...params, limit, offset]
+      [...params, limit, offset]
     )
     const products = productsResult.rows || []
 
     // Fetch all images for these products
     const productIds = products.map((p: any) => p.id)
     let imagesByProduct: Record<string, any[]> = {}
+    let variantsByProduct: Record<string, any[]> = {}
     
     if (productIds.length > 0) {
       const placeholders = productIds.map(() => "?").join(",")
@@ -134,11 +159,49 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           url: img.url,
         })
       })
+
+      // Fetch ALL variants with prices for these products
+      const variantsResult = await pgConnection.raw(
+        `SELECT 
+          pv.id,
+          pv.product_id,
+          pv.title,
+          pv.sku,
+          pv.manage_inventory,
+          pv.allow_backorder,
+          pv.metadata as variant_metadata,
+          pp.amount as price,
+          pp.currency_code
+        FROM product_variant pv
+        LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id
+        LEFT JOIN price pp ON pp.price_set_id = pvps.price_set_id AND pp.currency_code = ?
+        WHERE pv.product_id IN (${placeholders}) AND pv.deleted_at IS NULL
+        ORDER BY pv.product_id, pv.variant_rank ASC`,
+        [currency.toLowerCase(), ...productIds]
+      )
+      const variants = variantsResult.rows || []
+      variants.forEach((v: any) => {
+        if (!variantsByProduct[v.product_id]) {
+          variantsByProduct[v.product_id] = []
+        }
+        variantsByProduct[v.product_id].push({
+          id: v.id,
+          title: v.title,
+          sku: v.sku,
+          manage_inventory: v.manage_inventory,
+          allow_backorder: v.allow_backorder,
+          metadata: v.variant_metadata,
+          prices: v.price != null ? [{ amount: parseFloat(v.price), currency_code: v.currency_code || currency }] : [],
+        })
+      })
     }
 
     // Format response
     const formattedProducts = products.map((p: any) => {
       const meta = typeof p.metadata === "string" ? JSON.parse(p.metadata) : (p.metadata || {})
+      const variants = variantsByProduct[p.id] || []
+      const firstVariant = variants[0]
+      const firstPrice = firstVariant?.prices?.[0]
       return {
         id: p.id,
         title: p.title,
@@ -146,12 +209,14 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         thumbnail: p.thumbnail,
         subtitle: p.subtitle,
         description: p.description,
-        price: p.price ? parseFloat(p.price) : null,
-        currency_code: p.currency_code,
-        sku: p.sku,
+        price: firstPrice ? firstPrice.amount : null,
+        currency_code: firstPrice?.currency_code || currency,
+        sku: firstVariant?.sku || null,
         images: imagesByProduct[p.id] || [],
         metadata: meta,
         created_at: p.created_at,
+        collection_id: p.collection_id,
+        variants: variants,
       }
     })
 
