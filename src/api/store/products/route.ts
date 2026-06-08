@@ -146,7 +146,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     if (productIds.length > 0) {
       const placeholders = productIds.map(() => "?").join(",")
       const imagesResult = await pgConnection.raw(
-        `SELECT id, product_id, url FROM product_image WHERE product_id IN (${placeholders}) ORDER BY product_id, position`,
+        `SELECT id, product_id, url FROM image WHERE product_id IN (${placeholders}) AND deleted_at IS NULL ORDER BY product_id, rank`,
         productIds
       )
       const images = imagesResult.rows || []
