@@ -193,7 +193,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         }
         
         const pMeta = productMetadataMap[v.product_id] || {}
-        let prices = []
+        let prices: any[] = []
         if (v.price != null) {
           prices = [{ amount: parseFloat(v.price), currency_code: v.currency_code || currency }]
         } else if (pMeta.list_price || v.variant_metadata?.odoo_price) {
