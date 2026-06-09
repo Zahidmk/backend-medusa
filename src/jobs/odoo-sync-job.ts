@@ -94,16 +94,35 @@ export default async function odooSyncJob(container: MedusaContainer) {
         let medusaProductId: string;
 
         if (existingProduct) {
-          await productService.updateProducts(existingProduct.id, {
+          // Build images array: main thumbnail + gallery images from Odoo
+          const ODOO_URL = process.env.ODOO_URL?.replace(/\/$/, '') || "https://oskarllc-new-31031096.dev.odoo.com";
+          const imageUrls: Array<{ url: string }> = [];
+          if (odooProduct.image_1920) {
+            imageUrls.push({ url: `${ODOO_URL}/web/image/product.template/${odooProduct.id}/image_1920` });
+          }
+          if (odooProduct.product_template_image_ids?.length > 0) {
+            for (const galleryId of odooProduct.product_template_image_ids) {
+              imageUrls.push({ url: `${ODOO_URL}/web/image/product.image/${galleryId}/image_1920` });
+            }
+          }
+
+          const updatePayload: any = {
             title: medusaData.title,
             description: medusaData.description,
             handle: medusaData.handle,
             status: medusaData.status,
             metadata: medusaData.metadata,
-          });
+          };
+
+          if (imageUrls.length > 0) {
+            updatePayload.thumbnail = imageUrls[0].url;
+            updatePayload.images = imageUrls;
+          }
+
+          await productService.updateProducts(existingProduct.id, updatePayload);
           medusaProductId = existingProduct.id;
           updated++;
-          logger.info(`[Odoo Sync Job] Updated: ${medusaData.title} (${medusaProductId})`);
+          logger.info(`[Odoo Sync Job] Updated: ${medusaData.title} (${medusaProductId}) with ${imageUrls.length} images`);
         } else {
           const created_products = await productService.createProducts(medusaData);
           const created_product = Array.isArray(created_products) ? created_products[0] : created_products;
@@ -130,9 +149,9 @@ export default async function odooSyncJob(container: MedusaContainer) {
             let brandId: string;
             if (existingBrand.rows?.length > 0) {
               brandId = existingBrand.rows[0].id;
-              // Update logo_url if we have one and existing is empty or a local /brands/ path
+              // Always update logo_url from Odoo if we have one (Odoo is source of truth for logos)
               const existingLogo = existingBrand.rows[0].logo_url;
-              if (brandImageUrl && (!existingLogo || existingLogo.startsWith("/brands/"))) {
+              if (brandImageUrl && (existingLogo !== brandImageUrl)) {
                 await pgConnection.raw(
                   `UPDATE brand SET logo_url = ?, updated_at = NOW() WHERE id = ?`,
                   [brandImageUrl, brandId]
