@@ -203,18 +203,30 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     }
 
     // Build variants
-    const variants = variantsResult.rows.map((v: any) => ({
-      id: v.id,
-      title: v.title,
-      sku: v.sku,
-      barcode: v.barcode,
-      price: v.price ? parseFloat(v.price) : null,
-      currency_code: v.currency_code || currency,
-      inventory_quantity: null, // Will be populated from stock
-      allow_backorder: v.allow_backorder,
-      weight: v.weight,
-      metadata: v.variant_metadata,
-    }))
+    const variants = variantsResult.rows.map((v: any) => {
+      let price = v.price ? parseFloat(v.price) : null;
+      if (price == null) {
+        const vMeta = v.variant_metadata || {};
+        if (vMeta.odoo_price || metadata.list_price) {
+          const rawPrice = parseFloat(vMeta.odoo_price || metadata.list_price);
+          const multiplier = (currency.toLowerCase() === 'kwd' || currency.toLowerCase() === 'omr') ? 1000 : 100;
+          price = Math.round(rawPrice * multiplier);
+        }
+      }
+      
+      return {
+        id: v.id,
+        title: v.title,
+        sku: v.sku,
+        barcode: v.barcode,
+        price: price,
+        currency_code: v.currency_code || currency,
+        inventory_quantity: null, // Will be populated from stock
+        allow_backorder: v.allow_backorder,
+        weight: v.weight,
+        metadata: v.variant_metadata,
+      };
+    })
 
     // Stock availability
     const in_stock = metadata.stock_qty > 0 || metadata.stock_free_qty > 0

@@ -180,10 +180,28 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         [currency.toLowerCase(), ...productIds]
       )
       const variants = variantsResult.rows || []
+      
+      // We need product metadata to get list_price fallback
+      const productMetadataMap: Record<string, any> = {}
+      products.forEach((p: any) => {
+        productMetadataMap[p.id] = typeof p.metadata === "string" ? JSON.parse(p.metadata) : (p.metadata || {})
+      })
+
       variants.forEach((v: any) => {
         if (!variantsByProduct[v.product_id]) {
           variantsByProduct[v.product_id] = []
         }
+        
+        const pMeta = productMetadataMap[v.product_id] || {}
+        let prices = []
+        if (v.price != null) {
+          prices = [{ amount: parseFloat(v.price), currency_code: v.currency_code || currency }]
+        } else if (pMeta.list_price || v.variant_metadata?.odoo_price) {
+          const rawPrice = parseFloat(v.variant_metadata?.odoo_price || pMeta.list_price)
+          const multiplier = (currency.toLowerCase() === 'kwd' || currency.toLowerCase() === 'omr') ? 1000 : 100
+          prices = [{ amount: Math.round(rawPrice * multiplier), currency_code: currency }]
+        }
+        
         variantsByProduct[v.product_id].push({
           id: v.id,
           title: v.title,
@@ -191,7 +209,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           manage_inventory: v.manage_inventory,
           allow_backorder: v.allow_backorder,
           metadata: v.variant_metadata,
-          prices: v.price != null ? [{ amount: parseFloat(v.price), currency_code: v.currency_code || currency }] : [],
+          prices: prices,
         })
       })
     }
