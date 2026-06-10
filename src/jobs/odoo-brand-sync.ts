@@ -95,8 +95,8 @@ export default async function odooBrandSyncJob(container: MedusaContainer) {
           }
           
           await pgConnection.raw(
-            `UPDATE brand SET updated_at = NOW(), logo_url = ?, description = ? WHERE id = ?`,
-            [newLogo, odooBrand.description || null, existingId]
+            `UPDATE brand SET updated_at = NOW(), logo_url = ? WHERE id = ?`,
+            [newLogo, existingId]
           );
           updated++;
         } else {
@@ -105,7 +105,6 @@ export default async function odooBrandSyncJob(container: MedusaContainer) {
           await brandService.createBrands({
              name: name,
              slug: slug,
-             description: odooBrand.description || null,
              logo_url: logoUrl || null,
              is_active: true,
              is_special: false

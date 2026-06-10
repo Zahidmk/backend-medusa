@@ -603,7 +603,7 @@ class OdooSyncService {
       const brands = await this.searchRead(
         "custom.product.brand",
         [],
-        ["id", "name", "image_1920", "description"],
+        ["id", "name", "image_1920"],
         500
       )
       return brands as OdooBrand[]
@@ -620,7 +620,7 @@ class OdooSyncService {
   async fetchBrandById(brandId: number): Promise<OdooBrand | null> {
     await this.ensureAuth()
     try {
-      const brands = await this.read("custom.product.brand", [brandId], ["id", "name", "image_1920", "description"])
+      const brands = await this.read("custom.product.brand", [brandId], ["id", "name", "image_1920"])
       return brands.length > 0 ? (brands[0] as OdooBrand) : null
     } catch {
       return null
