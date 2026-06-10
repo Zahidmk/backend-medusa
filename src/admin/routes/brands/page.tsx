@@ -401,7 +401,7 @@ const BrandCard = ({
         <div className="w-full h-24 rounded-xl bg-white shadow-sm flex items-center justify-center overflow-hidden border border-gray-100">
           {brand.logo_url ? (
             <img
-              src={brand.logo_url}
+              src={brand.logo_url.startsWith('/') ? `https://website.markasouqs.com${brand.logo_url}` : brand.logo_url}
               alt={brand.name}
               className="w-full h-full object-contain p-2"
               onError={(e) => {
