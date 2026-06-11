@@ -457,6 +457,25 @@ async function upsertProduct(
         `UPDATE price SET amount=?, raw_amount=?, currency_code=?, updated_at=NOW() WHERE price_set_id=? AND deleted_at IS NULL`,
         [price, rawAmount, currency, varRes.rows[0].psid]
       )
+      // Ensure a KWD price always exists (store region requires it)
+      if (currency !== 'kwd') {
+        const existsKwd = await pg.raw(
+          `SELECT id FROM price WHERE price_set_id=? AND currency_code='kwd' AND deleted_at IS NULL LIMIT 1`,
+          [varRes.rows[0].psid]
+        )
+        if (existsKwd.rows?.length === 0) {
+          const rawKwd = JSON.stringify({ value: String(price), precision: 20 })
+          await pg.raw(
+            `INSERT INTO price (id, price_set_id, currency_code, amount, raw_amount, rules_count, created_at, updated_at) VALUES (?, ?, 'kwd', ?, ?, 0, NOW(), NOW())`,
+            [genId("price"), varRes.rows[0].psid, price, rawKwd]
+          )
+        } else {
+          await pg.raw(
+            `UPDATE price SET amount=?, raw_amount=?, updated_at=NOW() WHERE price_set_id=? AND currency_code='kwd' AND deleted_at IS NULL`,
+            [price, rawAmount, varRes.rows[0].psid]
+          )
+        }
+      }
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -640,6 +659,8 @@ async function upsertProduct(
   }
 
   // ── Price ─────────────────────────────────────────────────────────────────
+  // Always insert a KWD price since the store region requires it.
+  // Also insert the original currency if different from KWD.
   if (price > 0) {
     const priceSetId = genId("pset")
     await pg.raw(`INSERT INTO price_set (id, created_at, updated_at) VALUES (?, NOW(), NOW())`, [priceSetId])
@@ -648,10 +669,18 @@ async function upsertProduct(
       [genId("pvps"), variantId, priceSetId]
     )
     const rawAmount = JSON.stringify({ value: String(price), precision: 20 })
+    // Always insert KWD price
     await pg.raw(
-      `INSERT INTO price (id, price_set_id, currency_code, amount, raw_amount, rules_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, NOW(), NOW())`,
-      [genId("price"), priceSetId, currency, price, rawAmount]
+      `INSERT INTO price (id, price_set_id, currency_code, amount, raw_amount, rules_count, created_at, updated_at) VALUES (?, ?, 'kwd', ?, ?, 0, NOW(), NOW())`,
+      [genId("price"), priceSetId, price, rawAmount]
     )
+    // Also insert original currency if different from KWD
+    if (currency && currency !== 'kwd') {
+      await pg.raw(
+        `INSERT INTO price (id, price_set_id, currency_code, amount, raw_amount, rules_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, NOW(), NOW())`,
+        [genId("price"), priceSetId, currency, price, rawAmount]
+      )
+    }
   }
 
   // ── Product Options (attributes from attribute_line_ids / attributes) ─────
