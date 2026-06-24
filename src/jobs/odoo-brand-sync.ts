@@ -60,11 +60,17 @@ export default async function odooBrandSyncJob(container: MedusaContainer) {
       const img = odooBrand.image_1920;
       if (img && img !== true && img.length > 200) {
         const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-        const fname = slug + '-brand.png';
-        const fpath = path.join(outDir, fname);
         
         try {
-            fs.writeFileSync(fpath, Buffer.from(img, 'base64'));
+            const buf = Buffer.from(img, 'base64');
+            const isSvg = buf.slice(0, 100).toString('utf8').trim().startsWith('<svg') || 
+                          buf.slice(0, 100).toString('utf8').trim().startsWith('<?xml');
+            const ext = isSvg ? '.svg' : '.png';
+            
+            const fname = slug + '-brand' + ext;
+            const fpath = path.join(outDir, fname);
+            
+            fs.writeFileSync(fpath, buf);
             logoUrl = '/brands/' + fname; // Assuming frontend serves from /brands
             if (!IS_PROD) {
                logoUrl = '/static/brands/' + fname; // Local Medusa static fallback

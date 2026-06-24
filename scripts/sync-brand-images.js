@@ -217,13 +217,17 @@ async function main() {
         continue;
       }
 
-      // Save base64 image to disk
-      const slug = info.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-      const fname = `${slug}-brand.png`;
-      const fpath = path.join(OUT_DIR, fname);
-
       try {
         const buf = Buffer.from(img, 'base64');
+        
+        // Check if it's an SVG (starts with <svg or <?xml)
+        const isSvg = buf.slice(0, 100).toString('utf8').trim().startsWith('<svg') || 
+                      buf.slice(0, 100).toString('utf8').trim().startsWith('<?xml');
+        
+        const ext = isSvg ? '.svg' : '.png';
+        const fname = `${slug}-brand${ext}`;
+        const fpath = path.join(OUT_DIR, fname);
+
         fs.writeFileSync(fpath, buf);
         const logoUrl = `/brands/${fname}`;
 
