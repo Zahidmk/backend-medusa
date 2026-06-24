@@ -239,7 +239,7 @@ export interface OdooPublicCategory {
   parent_path: string | false
   sequence: number
   website_id: M2O
-  image_128: string | false
+  image_1920: string | false
 }
 
 export interface OdooCategory {
@@ -652,14 +652,19 @@ class OdooSyncService {
   async fetchPublicCategories(): Promise<OdooPublicCategory[]> {
     await this.ensureAuth()
     try {
-      return this.searchRead(
+      const categories = await this.executeKw(
         "product.public.category",
-        [["medusa_sync", "=", true]],
-        ["id", "name", "parent_id", "parent_path", "sequence", "website_id", "image_128", "medusa_sync"],
-        1000,
-        0,
-        "sequence asc"
-      ) as Promise<OdooPublicCategory[]>
+        "search_read",
+        [[["medusa_sync", "=", true]]],
+        { 
+          fields: ["id", "name", "parent_id", "parent_path", "sequence", "website_id", "image_1920", "medusa_sync"], 
+          limit: 1000, 
+          offset: 0, 
+          order: "sequence asc",
+          context: { bin_size: false }
+        }
+      )
+      return categories as OdooPublicCategory[]
     } catch (error: any) {
       console.warn("⚠️  product.public.category not available:", error.message)
       return []

@@ -54,11 +54,13 @@ function saveBase64Image(base64Data: string | false, dir: string, filename: stri
   const buffer = Buffer.from(base64Data, "base64")
   if (buffer.length < 100) return null // empty / corrupt
 
-  // Detect image type from magic bytes
+  // Detect image type from magic bytes or SVG text
   let ext = "jpg"
   if (buffer[0] === 0x89 && buffer[1] === 0x50) ext = "png"
   else if (buffer[0] === 0x47 && buffer[1] === 0x49) ext = "gif"
   else if (buffer[0] === 0x52 && buffer[1] === 0x49) ext = "webp"
+  else if (buffer.slice(0, 100).toString('utf8').trim().startsWith('<svg') || 
+           buffer.slice(0, 100).toString('utf8').trim().startsWith('<?xml')) ext = "svg"
 
   const fullFilename = `${filename}.${ext}`
   const filePath = path.join(dir, fullFilename)
@@ -222,12 +224,16 @@ export default async function syncBrandsCategories({ container }: ExecArgs) {
     console.warn(`   ⚠️  Could not clear old categories: ${err.message}`)
   }
 
-  // ── Step 2: Build parent→children map for ordering ──
-  // Process parent categories first, then children
-  const rootCategories = odooCategories.filter(c => !c.parent_id)
-  const childCategories = odooCategories.filter(c => !!c.parent_id)
+  // ── Step 2: Sort categories by parent_path depth (number of slashes or path length) ──
+  // shorter paths (roots/parents) will be processed first,
+  // ensuring parent categories are ALWAYS created in Medusa before their children.
+  odooCategories.sort((a, b) => {
+    const depthA = (a.parent_path || "").split("/").filter(Boolean).length
+    const depthB = (b.parent_path || "").split("/").filter(Boolean).length
+    return depthA - depthB
+  })
 
-  console.log(`\n   📊 Root categories: ${rootCategories.length}, Sub-categories: ${childCategories.length}`)
+  console.log(`\n   📊 Total Odoo categories to process: ${odooCategories.length}`)
 
   let catsCreated = 0
   let catsNoImage = 0
@@ -235,19 +241,9 @@ export default async function syncBrandsCategories({ container }: ExecArgs) {
   // Map Odoo category ID → Medusa category handle (for parent linking)
   const odooIdToHandle = new Map<number, string>()
 
-  // ── Step 3: Create root categories first ──
-  console.log("\n   Creating root categories...")
-  for (const oCategory of rootCategories) {
-    await createOrUpdateCategory(oCategory, null, pgConnection, productService, {
-      odooIdToHandle,
-      catsCreated: () => catsCreated++,
-      catsNoImage: () => catsNoImage++,
-    })
-  }
-
-  // ── Step 4: Create child categories ──
-  console.log("\n   Creating sub-categories...")
-  for (const oCategory of childCategories) {
+  // ── Step 3: Create categories in hierarchy order ──
+  console.log("\n   Creating categories...")
+  for (const oCategory of odooCategories) {
     const parentOdooId = Array.isArray(oCategory.parent_id) ? oCategory.parent_id[0] : null
     const parentHandle = parentOdooId ? odooIdToHandle.get(parentOdooId) : null
 
@@ -258,6 +254,15 @@ export default async function syncBrandsCategories({ container }: ExecArgs) {
         [parentHandle]
       )
       parentMedusaId = parentRows.rows[0]?.id || null
+    }
+
+    // Fallback: look up parent by odoo_id in metadata
+    if (!parentMedusaId && parentOdooId) {
+      const parentByOdooId = await pgConnection.raw(
+        `SELECT id FROM product_category WHERE metadata->>'odoo_id' = ? AND deleted_at IS NULL LIMIT 1`,
+        [String(parentOdooId)]
+      )
+      parentMedusaId = parentByOdooId.rows[0]?.id || null
     }
 
     await createOrUpdateCategory(oCategory, parentMedusaId, pgConnection, productService, {
@@ -307,8 +312,8 @@ async function createOrUpdateCategory(
 
     // Save category image from base64
     let imageUrl: string | null = null
-    if (oCategory.image_128 && typeof oCategory.image_128 === "string") {
-      const filename = saveBase64Image(oCategory.image_128, CATEGORIES_UPLOAD_DIR, `cat-${handle}`)
+    if (oCategory.image_1920 && typeof oCategory.image_1920 === "string") {
+      const filename = saveBase64Image(oCategory.image_1920, CATEGORIES_UPLOAD_DIR, `cat-${handle}`)
       if (filename) {
         imageUrl = `${CATEGORIES_URL_PREFIX}/${filename}`
         console.log(`   🖼️  Image saved: ${oCategory.name} → ${filename}`)

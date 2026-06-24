@@ -35,10 +35,13 @@ function saveBase64Image(base64Data: string | false, dir: string, filename: stri
   const buffer = Buffer.from(base64Data, "base64")
   if (buffer.length < 100) return null
 
+  // Detect image type from magic bytes or SVG text
   let ext = "jpg"
   if (buffer[0] === 0x89 && buffer[1] === 0x50) ext = "png"
   else if (buffer[0] === 0x47 && buffer[1] === 0x49) ext = "gif"
   else if (buffer[0] === 0x52 && buffer[1] === 0x49) ext = "webp"
+  else if (buffer.slice(0, 100).toString('utf8').trim().startsWith('<svg') || 
+           buffer.slice(0, 100).toString('utf8').trim().startsWith('<?xml')) ext = "svg"
 
   const fullFilename = `${filename}.${ext}`
   const filePath = path.join(dir, fullFilename)
@@ -112,9 +115,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     // Map: Odoo category ID → Medusa handle (for parent linking)
     const odooIdToHandle = new Map<number, string>()
 
-    // Process root categories first, then children (order matters for parent linking)
-    const rootCategories = odooCategories.filter(c => !c.parent_id)
-    const childCategories = odooCategories.filter(c => !!c.parent_id)
+    // Sort categories by parent_path depth (number of slashes or path length)
+    // shorter paths (roots/parents) will be processed first,
+    // ensuring parent categories are ALWAYS created in Medusa before their children.
+    odooCategories.sort((a: any, b: any) => {
+      const depthA = (a.parent_path || "").split("/").filter(Boolean).length
+      const depthB = (b.parent_path || "").split("/").filter(Boolean).length
+      return depthA - depthB
+    })
 
     const processCategory = async (oCategory: any, parentMedusaId: string | null) => {
       try {
@@ -124,8 +132,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
 
         // Try to save image
         let imageUrl: string | null = null
-        if (oCategory.image_128 && typeof oCategory.image_128 === "string") {
-          const filename = saveBase64Image(oCategory.image_128, CATEGORIES_UPLOAD_DIR, `cat-${handle}`)
+        if (oCategory.image_1920 && typeof oCategory.image_1920 === "string") {
+          const filename = saveBase64Image(oCategory.image_1920, CATEGORIES_UPLOAD_DIR, `cat-${handle}`)
           if (filename) {
             imageUrl = `${CATEGORIES_URL_PREFIX}/${filename}`
           }
@@ -172,13 +180,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
       }
     }
 
-    // Step 1: Create/update root categories
-    for (const cat of rootCategories) {
-      await processCategory(cat, null)
-    }
-
-    // Step 2: Create/update child categories (with parent linking)
-    for (const cat of childCategories) {
+    // Process all categories in hierarchy order
+    for (const cat of odooCategories) {
       const parentOdooId = Array.isArray(cat.parent_id) ? cat.parent_id[0] : null
       const parentHandle = parentOdooId ? odooIdToHandle.get(parentOdooId) : null
 
@@ -191,7 +194,37 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
         parentMedusaId = parentRow.rows[0]?.id || null
       }
 
+      // Fallback: look up parent by odoo_id in metadata
+      if (!parentMedusaId && parentOdooId) {
+        const parentByOdooId = await pgConnection.raw(
+          `SELECT id FROM product_category WHERE metadata->>'odoo_id' = ? AND deleted_at IS NULL LIMIT 1`,
+          [String(parentOdooId)]
+        )
+        parentMedusaId = parentByOdooId.rows[0]?.id || null
+      }
+
       await processCategory(cat, parentMedusaId)
+    }
+
+    // Clean up categories in Medusa that are no longer synced from Odoo
+    let softDeletedCount = 0
+    try {
+      const medusaCategories = await pgConnection.raw(
+        `SELECT id, metadata->>'odoo_id' as odoo_id FROM product_category WHERE metadata->>'odoo_id' IS NOT NULL AND deleted_at IS NULL`
+      )
+      const syncedOdooIds = new Set(odooCategories.map((c: any) => String(c.id)))
+
+      for (const row of medusaCategories.rows) {
+        if (!syncedOdooIds.has(row.odoo_id)) {
+          await pgConnection.raw(
+            `UPDATE product_category SET deleted_at = NOW(), updated_at = NOW() WHERE id = ?`,
+            [row.id]
+          )
+          softDeletedCount++
+        }
+      }
+    } catch (cleanupErr: any) {
+      errorMessages.push(`Cleanup: ${cleanupErr.message}`)
     }
 
     // Record last sync time

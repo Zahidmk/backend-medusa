@@ -40,10 +40,13 @@ function saveBase64Image(base64Data: string | false, dir: string, filename: stri
   const buffer = Buffer.from(base64Data, "base64")
   if (buffer.length < 100) return null
 
+  // Detect image type from magic bytes or SVG text
   let ext = "jpg"
   if (buffer[0] === 0x89 && buffer[1] === 0x50) ext = "png"
   else if (buffer[0] === 0x47 && buffer[1] === 0x49) ext = "gif"
   else if (buffer[0] === 0x52 && buffer[1] === 0x49) ext = "webp"
+  else if (buffer.slice(0, 100).toString('utf8').trim().startsWith('<svg') || 
+           buffer.slice(0, 100).toString('utf8').trim().startsWith('<?xml')) ext = "svg"
 
   const fullFilename = `${filename}.${ext}`
   const filePath = path.join(dir, fullFilename)
@@ -203,8 +206,8 @@ async function upsertSingleCategory(
 
   // Save image if provided
   let imageUrl: string | null = null
-  if (cat.image_128 && typeof cat.image_128 === "string") {
-    const filename = saveBase64Image(cat.image_128, CATEGORIES_UPLOAD_DIR, `cat-${handle}`)
+  if (cat.image_1920 && typeof cat.image_1920 === "string") {
+    const filename = saveBase64Image(cat.image_1920, CATEGORIES_UPLOAD_DIR, `cat-${handle}`)
     if (filename) imageUrl = `${CATEGORIES_URL_PREFIX}/${filename}`
   }
 
@@ -292,8 +295,8 @@ async function syncCategories(
       odooIdToHandle.set(oCategory.id, handle)
 
       let imageUrl: string | null = null
-      if (oCategory.image_128 && typeof oCategory.image_128 === "string") {
-        const filename = saveBase64Image(oCategory.image_128, CATEGORIES_UPLOAD_DIR, `cat-${handle}`)
+      if (oCategory.image_1920 && typeof oCategory.image_1920 === "string") {
+        const filename = saveBase64Image(oCategory.image_1920, CATEGORIES_UPLOAD_DIR, `cat-${handle}`)
         if (filename) imageUrl = `${CATEGORIES_URL_PREFIX}/${filename}`
       }
 
