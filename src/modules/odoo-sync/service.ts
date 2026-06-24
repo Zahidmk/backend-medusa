@@ -595,16 +595,18 @@ class OdooSyncService {
   // ═══════════════════════════════════════════════
 
   /**
-   * Fetch all brands from Odoo
+   * Fetch all brands from Odoo.
+   * Uses context { bin_size: false } to force Odoo to return actual
+   * base64 image data instead of just `true` (a size marker).
    */
   async fetchBrands(): Promise<OdooBrand[]> {
     await this.ensureAuth()
     try {
-      const brands = await this.searchRead(
+      const brands = await this.executeKw(
         "custom.product.brand",
-        [],
-        ["id", "name", "image_1920"],
-        500
+        "search_read",
+        [[]],
+        { fields: ["id", "name", "image_1920"], limit: 500, context: { bin_size: false } }
       )
       return brands as OdooBrand[]
     } catch (error: any) {
