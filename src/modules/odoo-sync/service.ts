@@ -139,7 +139,8 @@ export interface OdooProduct {
 export interface OdooBrand {
   id: number
   name: string
-  logo: string | false        // base64 logo image
+  logo: string | false        // base64 logo image (legacy field name)
+  image_1920: string | false  // base64 logo image (actual Odoo field name returned by API)
   description: string | false
 }
 

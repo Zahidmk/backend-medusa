@@ -56,9 +56,11 @@ export default async function odooBrandSyncJob(container: MedusaContainer) {
 
       let logoUrl = null;
 
-      // Process Logo Image
+      // Process Logo Image — use image_1920 field from Odoo
+      // Odoo returns base64 string with bin_size:false context, or `true` when bin_size is default
       const img = odooBrand.image_1920;
-      if (img && img !== true && img.length > 200) {
+      logger.info(`[Brand Sync] ${name}: image_1920 type=${typeof img}, length=${typeof img === 'string' ? img.length : img}`);
+      if (img && img !== true && typeof img === 'string' && img.length > 200) {
         const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         
         try {
@@ -71,13 +73,13 @@ export default async function odooBrandSyncJob(container: MedusaContainer) {
             const fpath = path.join(outDir, fname);
             
             fs.writeFileSync(fpath, buf);
-            logoUrl = '/brands/' + fname; // Assuming frontend serves from /brands
-            if (!IS_PROD) {
-               logoUrl = '/static/brands/' + fname; // Local Medusa static fallback
-            }
+            logoUrl = IS_PROD ? '/brands/' + fname : '/static/brands/' + fname;
+            logger.info(`[Brand Sync] ${name}: saved logo → ${fname} (${buf.length} bytes)`);
         } catch(e: any) {
             logger.error(`[Brand Sync] Failed to write image for ${name}: ${e.message}`);
         }
+      } else {
+        logger.warn(`[Brand Sync] ${name}: no usable image_1920 from Odoo (img=${img === true ? 'true (bin_size issue)' : 'empty/missing'})`);
       }
 
       // Upsert into DB manually using pgConnection because BrandService might not have upsert
@@ -88,17 +90,12 @@ export default async function odooBrandSyncJob(container: MedusaContainer) {
         );
         
         if (existingResult.rows?.length > 0) {
-          // Update
+          // Update — always use new logo from Odoo if we have one, otherwise keep existing
           const existingId = existingResult.rows[0].id;
           const currentLogo = existingResult.rows[0].logo_url;
           
-          // Only update logo if we have a new one and it's not already pointing to a good SVG
-          let newLogo = logoUrl;
-          if (currentLogo && currentLogo.endsWith('.svg')) {
-             newLogo = currentLogo; // Keep original high-quality SVG
-          } else if (!newLogo) {
-             newLogo = currentLogo; // Keep existing if Odoo has no image
-          }
+          // Use newly fetched logo if available, otherwise keep the current one
+          const newLogo = logoUrl || currentLogo;
           
           await pgConnection.raw(
             `UPDATE brand SET updated_at = NOW(), logo_url = ? WHERE id = ?`,
