@@ -205,11 +205,50 @@ export default async function orderCreatedHandler({
   logger.info(`📦 Order created: ${orderId} - Syncing to Odoo...`)
   
   try {
-    // Get order details
-    const orderService = container.resolve("order")
-    const order = await orderService.retrieveOrder(orderId, {
-      relations: ["items", "items.variant", "shipping_address"]
-    })
+    // Medusa v2: use the order module service correctly
+    // The module key in v2 is "order" but the service has method `retrieve` not `retrieveOrder`
+    let order: any = null
+    
+    try {
+      const orderModuleService = container.resolve("order")
+      // v2 uses `.retrieve()` with proper selects/relations config
+      order = await orderModuleService.retrieve(orderId, {
+        relations: ["items", "items.variant", "shipping_address", "shipping_address.*"],
+        select: [
+          "id", "email", "status",
+          "items.id", "items.title", "items.quantity", "items.unit_price",
+          "items.variant.id", "items.variant.sku",
+          "shipping_address.first_name", "shipping_address.last_name",
+          "shipping_address.address_1", "shipping_address.city",
+          "shipping_address.postal_code", "shipping_address.phone",
+        ]
+      })
+    } catch (resolveErr: any) {
+      logger.warn(`Direct order module resolve failed (${resolveErr.message}), trying query service...`)
+      
+      // Fallback: use the query service (available in Medusa v2)
+      try {
+        const query = container.resolve("query")
+        const { data: orders } = await query.graph({
+          entity: "order",
+          filters: { id: orderId },
+          fields: [
+            "id", "email", "status",
+            "items.*",
+            "items.variant.*",
+            "shipping_address.*",
+          ]
+        })
+        order = orders?.[0] ?? null
+      } catch (queryErr: any) {
+        logger.warn(`Query service also failed: ${queryErr.message}`)
+      }
+    }
+
+    if (!order) {
+      logger.warn(`Could not retrieve order ${orderId} - skipping Odoo sync`)
+      return
+    }
     
     // Authenticate with Odoo
     const uid = await authenticateOdoo()
@@ -226,9 +265,6 @@ export default async function orderCreatedHandler({
       if (confirmed) {
         logger.info(`✅ Stock reduced in Odoo for order ${odooOrderId}`)
       }
-      
-      // Update order metadata with Odoo ID
-      // Note: This would require additional logic to update metadata
     } else {
       logger.warn(`Failed to sync order ${orderId} to Odoo`)
     }
