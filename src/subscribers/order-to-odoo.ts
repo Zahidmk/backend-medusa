@@ -205,43 +205,42 @@ export default async function orderCreatedHandler({
   logger.info(`📦 Order created: ${orderId} - Syncing to Odoo...`)
   
   try {
-    // Medusa v2: use the order module service correctly
-    // The module key in v2 is "order" but the service has method `retrieve` not `retrieveOrder`
+    // Medusa v2: best way to fetch order with relations is via remoteQuery / query
     let order: any = null
     
+    // Primary: use query.graph (recommended Medusa v2 approach)
     try {
-      const orderModuleService = container.resolve("order")
-      // v2 uses `.retrieve()` with proper selects/relations config
-      order = await orderModuleService.retrieve(orderId, {
-        relations: ["items", "items.variant", "shipping_address", "shipping_address.*"],
-        select: [
+      const query = container.resolve("query")
+      const { data: orders } = await (query as any).graph({
+        entity: "order",
+        filters: { id: orderId },
+        fields: [
           "id", "email", "status",
-          "items.id", "items.title", "items.quantity", "items.unit_price",
-          "items.variant.id", "items.variant.sku",
-          "shipping_address.first_name", "shipping_address.last_name",
-          "shipping_address.address_1", "shipping_address.city",
-          "shipping_address.postal_code", "shipping_address.phone",
+          "items.*",
+          "items.variant.*",
+          "shipping_address.*",
         ]
       })
-    } catch (resolveErr: any) {
-      logger.warn(`Direct order module resolve failed (${resolveErr.message}), trying query service...`)
-      
-      // Fallback: use the query service (available in Medusa v2)
+      order = orders?.[0] ?? null
+      if (order) {
+        logger.info(`  Retrieved order via query.graph`)
+      }
+    } catch (queryErr: any) {
+      logger.warn(`query.graph failed (${queryErr.message}), trying order module...`)
+    }
+
+    // Fallback: direct order module service (cast to any to bypass TS interface mismatch)
+    if (!order) {
       try {
-        const query = container.resolve("query")
-        const { data: orders } = await query.graph({
-          entity: "order",
-          filters: { id: orderId },
-          fields: [
-            "id", "email", "status",
-            "items.*",
-            "items.variant.*",
-            "shipping_address.*",
-          ]
+        const orderModuleService = container.resolve("order")
+        order = await (orderModuleService as any).retrieveOrder(orderId, {
+          relations: ["items", "items.variant", "shipping_address"],
         })
-        order = orders?.[0] ?? null
-      } catch (queryErr: any) {
-        logger.warn(`Query service also failed: ${queryErr.message}`)
+        if (order) {
+          logger.info(`  Retrieved order via orderModuleService.retrieveOrder`)
+        }
+      } catch (svcErr: any) {
+        logger.warn(`orderModuleService fallback also failed: ${svcErr.message}`)
       }
     }
 
