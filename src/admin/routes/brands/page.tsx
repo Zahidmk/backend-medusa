@@ -382,6 +382,14 @@ const BrandCard = ({
 }) => {
   const [showActions, setShowActions] = useState(false)
 
+  // Resolve logo URL for the admin UI
+  const resolvedLogoUrl = (() => {
+    if (!brand.logo_url) return null
+    if (brand.logo_url.startsWith("/brands/")) return `https://website.markasouqs.com${brand.logo_url}`
+    if (brand.logo_url.includes("oskarllc-new")) return null // Odoo placeholders
+    return brand.logo_url
+  })()
+
   // Quick linked count badge
   const { data } = useQuery<{ product_ids: string[] }>({
     queryKey: ["brand-product-ids", brand.id],
@@ -399,9 +407,9 @@ const BrandCard = ({
       {/* Logo Container */}
       <div className="p-4 flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 min-h-[120px]">
         <div className="w-full h-24 rounded-xl bg-white shadow-sm flex items-center justify-center overflow-hidden border border-gray-100">
-          {brand.logo_url ? (
+          {resolvedLogoUrl ? (
             <img
-              src={brand.logo_url.startsWith('/') ? `https://website.markasouqs.com${brand.logo_url}` : brand.logo_url}
+              src={resolvedLogoUrl}
               alt={brand.name}
               className="w-full h-full object-contain p-2"
               onError={(e) => {
@@ -511,9 +519,11 @@ const BrandFormDrawer = ({
   // because the admin lives on a different subdomain.
   const toPreviewUrl = (url: string | undefined) => {
     if (!url) return ""
-    if (url.startsWith("http")) return url
+    if (url.includes("oskarllc-new")) return ""
     if (url.startsWith("/static/")) return `https://admin.markasouqs.com${url}`
-    return `https://website.markasouqs.com${url}`
+    if (url.startsWith("/brands/")) return `https://website.markasouqs.com${url}`
+    if (url.startsWith("/")) return `https://website.markasouqs.com${url}`
+    return url
   }
   const [logoPreview, setLogoPreview] = useState(() => toPreviewUrl(brand?.logo_url))
   const [isActive, setIsActive] = useState(() => brand?.is_active ?? true)
@@ -521,6 +531,15 @@ const BrandFormDrawer = ({
   const [isLoading, setIsLoading] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
+  // Reset when brand changes
+  useEffect(() => {
+    setName(brand?.name || "")
+    setDescription(brand?.description || "")
+    setLogoFile(null)
+    setLogoPreview(toPreviewUrl(brand?.logo_url))
+    setIsActive(brand?.is_active ?? true)
+    setIsSpecial(brand?.is_special ?? false)
+  }, [brand])
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
