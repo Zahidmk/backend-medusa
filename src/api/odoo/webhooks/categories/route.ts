@@ -229,9 +229,15 @@ async function upsertSingleCategory(
 
     // Fallback: find by handle of parent name
     if (parentRow.rows.length === 0 && parentName) {
+      let actualParentName = parentName;
+      if (actualParentName.includes('/')) {
+        const parts = actualParentName.split('/');
+        actualParentName = parts[parts.length - 1].trim();
+      }
+      
       parentRow = await pg.raw(
         `SELECT id FROM product_category WHERE handle = ? AND deleted_at IS NULL LIMIT 1`,
-        [slugify(parentName)]
+        [slugify(actualParentName)]
       )
     }
 
@@ -344,9 +350,16 @@ async function syncCategories(
 
     let parentMedusaId: string | null = null
     if (parentHandle) {
+      let actualParentName = cat.parent_id[1];
+      if (actualParentName && actualParentName.includes('/')) {
+        const parts = actualParentName.split('/');
+        actualParentName = parts[parts.length - 1].trim();
+      }
+      const actualParentHandle = actualParentName ? slugify(actualParentName) : parentHandle;
+
       const parentRow = await pg.raw(
         `SELECT id FROM product_category WHERE handle = ? AND deleted_at IS NULL LIMIT 1`,
-        [parentHandle]
+        [actualParentHandle]
       )
       parentMedusaId = parentRow.rows[0]?.id || null
     }
