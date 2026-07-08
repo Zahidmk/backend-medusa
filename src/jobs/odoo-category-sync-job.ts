@@ -196,7 +196,7 @@ export default async function odooCategorySyncJob(container: MedusaContainer) {
   }
 }
 
-export const config = {
-  name: "odoo-category-sync",
-  schedule: "*/15 * * * *", // Every 15 minutes
-}
+// export const config = {
+//   name: "odoo-category-sync",
+//   schedule: "*/15 * * * *", // Every 15 minutes
+// }

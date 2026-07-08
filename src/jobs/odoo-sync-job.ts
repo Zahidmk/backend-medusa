@@ -254,7 +254,7 @@ async function updateLastSync(pgConnection: any, logger: any) {
   }
 }
 
-export const config = {
-  name: "odoo-product-sync",
-  schedule: "*/5 * * * *",
-};
+// export const config = {
+//   name: "odoo-product-sync",
+//   schedule: "*/5 * * * *",
+// };
