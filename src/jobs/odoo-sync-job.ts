@@ -13,7 +13,7 @@ import {
   Modules,
 } from "@medusajs/framework/utils";
 
-export default async function odooSyncJob(container: MedusaContainer) {
+export default async function odooSyncJob({ container }: { container: MedusaContainer }) {
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER);
   const pgConnection = container.resolve(ContainerRegistrationKeys.PG_CONNECTION);
   const productService = container.resolve(Modules.PRODUCT);

@@ -28,7 +28,7 @@ const EXCLUDED_CATEGORY_PATTERNS = [
   'old category', 'deprecated', 'draft'
 ]
 
-export default async function odooCategorySyncJob(container: MedusaContainer) {
+export default async function odooCategorySyncJob({ container }: { container: MedusaContainer }) {
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER)
   const pgConnection = container.resolve(ContainerRegistrationKeys.PG_CONNECTION)
   const productService = container.resolve(Modules.PRODUCT)

@@ -4,7 +4,7 @@ import { BRAND_MODULE } from "../modules/brands";
 import fs from "fs";
 import path from "path";
 
-export default async function odooBrandSyncJob(container: MedusaContainer) {
+export default async function odooBrandSyncJob({ container }: { container: MedusaContainer }) {
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER);
   const pgConnection = container.resolve(ContainerRegistrationKeys.PG_CONNECTION);
   
