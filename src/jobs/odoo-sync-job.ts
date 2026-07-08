@@ -254,7 +254,7 @@ async function updateLastSync(pgConnection: any, logger: any) {
   }
 }
 
-// export const config = {
-//   name: "odoo-product-sync",
-//   schedule: "*/5 * * * *",
-// };
+export const config = {
+  name: "odoo-product-sync",
+  schedule: "0 0 1 1 *", // Disabled: Runs only once a year on Jan 1st
+};
