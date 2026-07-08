@@ -162,22 +162,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
       // Fetch ALL variants with prices for these products
       const variantsResult = await pgConnection.raw(
-        `SELECT 
-          pv.id,
-          pv.product_id,
-          pv.title,
-          pv.sku,
-          pv.manage_inventory,
-          pv.allow_backorder,
-          pv.metadata as variant_metadata,
-          pp.amount as price,
-          pp.currency_code
-        FROM product_variant pv
-        LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id
-        LEFT JOIN price pp ON pp.price_set_id = pvps.price_set_id AND pp.currency_code = ?
-        WHERE pv.product_id IN (${placeholders}) AND pv.deleted_at IS NULL
-        ORDER BY pv.product_id, pv.variant_rank ASC`,
-        [currency.toLowerCase(), ...productIds]
+        `SELECT pv.id, pv.product_id, pv.title, pv.sku, pv.manage_inventory, pv.allow_backorder, 
+                pv.metadata as variant_metadata, pp.amount as price, pp.currency_code
+         FROM product_variant pv
+         LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id
+         LEFT JOIN price pp ON pp.price_set_id = pvps.price_set_id AND pp.currency_code = ?
+         WHERE pv.product_id IN (${placeholders}) AND pv.deleted_at IS NULL
+         AND (pp.currency_code = ? OR pp.id IS NULL)
+         ORDER BY pv.product_id, pv.variant_rank ASC, pp.amount ASC`,
+        [currency.toLowerCase(), ...productIds, currency.toLowerCase()]
       )
       const variants = variantsResult.rows || []
       

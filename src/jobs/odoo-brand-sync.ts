@@ -40,11 +40,7 @@ export default async function odooBrandSyncJob(container: MedusaContainer) {
     let created = 0;
     let updated = 0;
     
-    // Check if we are running on production server to save images to NextJS directly
-    const IS_PROD = fs.existsSync('/var/www/marqa-souq/frontend/markasouq-web/public/brands');
-    const outDir = IS_PROD 
-        ? '/var/www/marqa-souq/frontend/markasouq-web/public/brands' 
-        : path.join(process.cwd(), 'static', 'brands'); // Local fallback
+    const outDir = path.join(process.cwd(), 'static', 'uploads', 'brands');
     
     if (!fs.existsSync(outDir)) {
         fs.mkdirSync(outDir, { recursive: true });
@@ -55,23 +51,10 @@ export default async function odooBrandSyncJob(container: MedusaContainer) {
       if (!name) continue;
 
       let logoUrl: string | null = null;
-
-      // Strategy 1 (Primary): Use Odoo direct image URL — always up-to-date, no file system dependency
-      const ODOO_URL = process.env.ODOO_URL?.replace(/\/$/, '') || "https://oskarllc-new-31031096.dev.odoo.com";
-      const odooDirectUrl = `${ODOO_URL}/web/image/custom.product.brand/${odooBrand.id}/image_1920`;
-      
-      // Check if brand has an image in Odoo (image_1920 will be truthy if exists)
       const img = odooBrand.image_1920;
-      if (img && img !== false) {
-        // Brand has an image in Odoo — use the direct URL
-        logoUrl = odooDirectUrl;
-        logger.info(`[Brand Sync] ${name}: using Odoo direct URL → ${logoUrl}`);
-      } else {
-        logger.warn(`[Brand Sync] ${name}: no image in Odoo (image_1920 is empty/false)`);
-      }
 
-      // Strategy 2 (Fallback): If we have actual base64 data AND are on production, save locally
-      if (!logoUrl && img && img !== true && typeof img === 'string' && img.length > 200) {
+      // Extract and save base64 image data from Odoo
+      if (img && img !== true && typeof img === 'string' && img.length > 200) {
         const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         
         try {
@@ -84,11 +67,13 @@ export default async function odooBrandSyncJob(container: MedusaContainer) {
             const fpath = path.join(outDir, fname);
             
             fs.writeFileSync(fpath, buf);
-            logoUrl = IS_PROD ? '/brands/' + fname : '/static/brands/' + fname;
-            logger.info(`[Brand Sync] ${name}: saved logo fallback → ${fname} (${buf.length} bytes)`);
+            logoUrl = '/static/uploads/brands/' + fname;
+            logger.info(`[Brand Sync] ${name}: saved logo → ${fname} (${buf.length} bytes)`);
         } catch(e: any) {
-            logger.error(`[Brand Sync] Failed to write fallback image for ${name}: ${e.message}`);
+            logger.error(`[Brand Sync] Failed to write image for ${name}: ${e.message}`);
         }
+      } else {
+        logger.warn(`[Brand Sync] ${name}: no valid image data found in Odoo`);
       }
 
       // Upsert into DB manually using pgConnection because BrandService might not have upsert
