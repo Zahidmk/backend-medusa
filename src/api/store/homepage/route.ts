@@ -100,7 +100,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
                   pvp.amount, pvp.currency_code
            FROM product_variant pv
            LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id
-           LEFT JOIN price pvp ON pvp.price_set_id = pvps.price_set_id
+           LEFT JOIN price pvp ON pvp.price_set_id = pvps.price_set_id AND pvp.currency_code = 'kwd'
            WHERE pv.product_id IN (${idPlaceholders})`,
           productIds
         )
@@ -218,7 +218,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
                 pvp.amount, pvp.currency_code
          FROM product_variant pv
          LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id
-         LEFT JOIN price pvp ON pvp.price_set_id = pvps.price_set_id
+         LEFT JOIN price pvp ON pvp.price_set_id = pvps.price_set_id AND pvp.currency_code = 'kwd'
          WHERE pv.product_id IN (${idPlaceholders})`,
         productIds
       )
