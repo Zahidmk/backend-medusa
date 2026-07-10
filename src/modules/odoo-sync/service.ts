@@ -832,9 +832,8 @@ class OdooSyncService {
           .substring(0, 100)
 
     // Determine product status:
-    // If product is active + saleable → publish it in Medusa
-    // We use Odoo's is_published as a hint but default to "published" for saleable products
-    const status = (product.active && product.sale_ok) ? "published" : "draft"
+    // Default set to "draft" as requested so it can be manually published on the Medusa dashboard later
+    const status = "draft"
 
     // Brand name: from resolved brand_id, or x_studio_brand_1, or options
     const brandName = options?.brandName
