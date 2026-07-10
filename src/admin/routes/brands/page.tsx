@@ -373,12 +373,10 @@ const BrandCard = ({
   brand,
   onEdit,
   onDelete,
-  onAssign,
 }: {
   brand: Brand
   onEdit: (brand: Brand) => void
   onDelete: (id: string) => void
-  onAssign: (brand: Brand) => void
 }) => {
   const [showActions, setShowActions] = useState(false)
 
@@ -446,15 +444,12 @@ const BrandCard = ({
           </div>
         </div>
         {/* Product count pill */}
-        <button
-          onClick={() => onAssign(brand)}
-          className="mt-1 flex items-center gap-1 text-xs text-violet-600 font-medium hover:text-violet-800 transition-colors"
-        >
-          <span className="inline-block w-4 h-4 rounded-full bg-violet-100 text-center leading-4 text-[10px] font-bold">
+        <div className="mt-1 flex items-center gap-1 text-xs text-gray-500 font-medium">
+          <span className="inline-block w-4 h-4 rounded-full bg-gray-100 text-center leading-4 text-[10px] font-bold">
             {linkedCount}
           </span>
-          product{linkedCount !== 1 ? "s" : ""} linked · Manage →
-        </button>
+          product{linkedCount !== 1 ? "s" : ""} linked
+        </div>
       </div>
 
       {/* Hover Actions Overlay */}
@@ -464,15 +459,6 @@ const BrandCard = ({
           showActions ? "opacity-100" : "opacity-0 pointer-events-none"
         )}
       >
-        <Button
-          variant="secondary"
-          size="small"
-          onClick={() => onAssign(brand)}
-          className="w-full bg-violet-600 border-0 text-white hover:bg-violet-700 flex items-center justify-center gap-1.5"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Assign Products
-        </Button>
         <div className="flex gap-2 w-full">
           <Button
             variant="secondary"
@@ -739,7 +725,7 @@ const BrandsPage = () => {
   const [searchQuery, setSearchQuery] = useState("")
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null)
-  const [assigningBrand, setAssigningBrand] = useState<Brand | null>(null)
+  // Removed assigningBrand state
 
   const { data, isLoading, error } = useQuery<BrandsResponse>({
     queryKey: ["brands"],
@@ -908,7 +894,6 @@ const BrandsPage = () => {
                 brand={brand}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
-                onAssign={setAssigningBrand}
               />
             ))}
           </div>
@@ -924,13 +909,7 @@ const BrandsPage = () => {
         onSave={handleSave}
       />
 
-      {/* Product assignment modal */}
-      {assigningBrand && (
-        <ProductAssignModal
-          brand={assigningBrand}
-          onClose={() => setAssigningBrand(null)}
-        />
-      )}
+      {/* Product assignment modal removed */}
     </div>
   )
 }
