@@ -256,5 +256,5 @@ async function updateLastSync(pgConnection: any, logger: any) {
 
 export const config = {
   name: "odoo-product-sync",
-  schedule: "*/5 * * * *", // Runs automatically every 5 minutes
+  schedule: "0 0 1 1 *", // Disabled: Relying on Odoo webhooks instead
 };
