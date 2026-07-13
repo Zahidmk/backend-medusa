@@ -69,13 +69,16 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     ]
     const params: any[] = [...categoryIds]
 
+    const productCurrency = currency.toLowerCase()
+    const divisor = (productCurrency === "kwd" || productCurrency === "omr" || productCurrency === "bhd") ? 1000 : 100
+
     if (minPrice !== null) {
       conditions.push("pp.amount >= ?")
-      params.push(minPrice)
+      params.push(minPrice * divisor)
     }
     if (maxPrice !== null) {
       conditions.push("pp.amount <= ?")
-      params.push(maxPrice)
+      params.push(maxPrice * divisor)
     }
     if (brand) {
       // Match against brand (primary), odoo_brand, or brand_name in metadata, fallback to title starts-with

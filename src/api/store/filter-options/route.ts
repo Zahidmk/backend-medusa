@@ -124,11 +124,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     }
 
     // Add price range
-    const priceRanges = (priceResult.rows || []).map((r: any) => ({
-      currency_code: r.currency_code,
-      min: parseFloat(r.min_price) || 0,
-      max: parseFloat(r.max_price) || 0,
-    }))
+    const priceRanges = (priceResult.rows || []).map((r: any) => {
+      const code = (r.currency_code || "aed").toLowerCase()
+      const divisor = (code === "kwd" || code === "omr" || code === "bhd") ? 1000 : 100
+      return {
+        currency_code: r.currency_code,
+        min: (parseFloat(r.min_price) || 0) / divisor,
+        max: (parseFloat(r.max_price) || 0) / divisor,
+      }
+    })
 
     // Add sort options
     const sortOptions = [
