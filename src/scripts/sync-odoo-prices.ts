@@ -65,9 +65,8 @@ export default async function syncOdooPrices({ container }: ExecArgs) {
             logger.warn(`No odoo_price for variant ${variant.id} (${variant.sku || 'no-sku'}), using default 10 KWD`)
           }
 
-          // Convert price to smallest unit (fils for KWD - 1 KWD = 1000 fils)
-          // KWD uses 3 decimal places unlike most currencies that use 2
-          const priceAmount = Math.round(parseFloat(odooPrice) * 1000)
+          // Odoo prices are already in fils natively. Do not multiply.
+          const priceAmount = Math.round(parseFloat(odooPrice))
 
           // Check if variant already has a price set linked
           const { data: existingLinks } = await query.graph({
