@@ -59,9 +59,8 @@ function slugify(text: string): string {
 }
 
 function toSmallestUnit(amount: number): number {
-  // Odoo already stores prices in the smallest unit (fils) for this DB.
-  // DO NOT multiply by 10^decimals, just round it to be safe.
-  return Math.round(amount)
+  // KWD/OMR: 1 unit = 1000 smallest (3 decimal places)
+  return Math.round(amount * Math.pow(10, DEFAULT_CURRENCY_DECIMALS))
 }
 
 /**

@@ -127,8 +127,7 @@ export default async function syncTestProducts({ container }: ExecArgs) {
       const productCurrency = odooProduct.currency_id
         ? odooProduct.currency_id[1].toLowerCase()
         : "omr"
-      // Odoo already sends prices in fils. No multiplication needed.
-      const currencyMultiplier = 1;
+      const currencyMultiplier = (productCurrency === "kwd" || productCurrency === "omr") ? 1000 : 100
 
       // ── Handle variants with attributes ──
       if (odooProduct.product_variant_count > 1 && odooProduct.attribute_line_ids?.length > 0) {
