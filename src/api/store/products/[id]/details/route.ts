@@ -250,7 +250,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         const vMeta = v.variant_metadata || {};
         if (vMeta.odoo_price || metadata.retail_price || metadata.list_price) {
           const rawPrice = parseFloat(vMeta.odoo_price || metadata.retail_price || metadata.list_price);
-          const multiplier = (currency.toLowerCase() === 'kwd' || currency.toLowerCase() === 'omr') ? 1000 : 100;
+          const multiplier = 1000;
           price = Math.round(rawPrice * multiplier);
         }
       }

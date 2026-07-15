@@ -174,8 +174,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     // requests needed. Each comparison product includes title, image,
     // price (converted from fils to display units), and its own specs
     // for side-by-side comparison.
-    const currencyDivisor = (currency === "kwd" || currency === "omr") ? 1000 : 100
-    const currencyDecimals = (currency === "kwd" || currency === "omr") ? 3 : 2
+    const currencyDivisor = 1000
+    const currencyDecimals = 3
 
     const altOdooIds: number[] = Array.isArray(metadata.alternative_odoo_ids) ? metadata.alternative_odoo_ids : []
     const upsellOdooIds: number[] = Array.isArray(metadata.upsell_odoo_ids) ? metadata.upsell_odoo_ids : []
@@ -372,7 +372,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
         // Currency & price helpers (for frontend display)
         currency_code: currency,
-        currency_symbol: currency === "kwd" ? "KWD" : currency === "omr" ? "OMR" : currency.toUpperCase(),
+        currency_symbol: "KWD",
         currency_decimals: currencyDecimals,
         currency_divisor: currencyDivisor,
 

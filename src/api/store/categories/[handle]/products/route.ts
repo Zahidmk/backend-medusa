@@ -70,7 +70,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const params: any[] = [...categoryIds]
 
     const productCurrency = currency.toLowerCase()
-    const divisor = (productCurrency === "kwd" || productCurrency === "omr" || productCurrency === "bhd") ? 1000 : 100
+    const divisor = 1000
 
     if (minPrice !== null) {
       conditions.push("pp.amount >= ?")

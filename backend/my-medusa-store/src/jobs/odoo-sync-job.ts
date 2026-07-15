@@ -109,7 +109,7 @@ export default async function odooSyncJob(container: MedusaContainer) {
 
         // Sync prices via Pricing module
         const price = odooProduct.list_price || odooProduct.lst_price || 0;
-        const currency = (odooProduct.currency_id?.[1] || "OMR").toString().toLowerCase();
+        const currency = "kwd";
 
         if (price > 0) {
           try {

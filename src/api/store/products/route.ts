@@ -191,7 +191,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           prices = [{ amount: parseFloat(v.price), currency_code: v.currency_code || currency }]
         } else if (pMeta.retail_price || pMeta.list_price || v.variant_metadata?.odoo_price) {
           const rawPrice = parseFloat(pMeta.retail_price || pMeta.list_price || v.variant_metadata?.odoo_price)
-          const multiplier = (currency.toLowerCase() === 'kwd' || currency.toLowerCase() === 'omr') ? 1000 : 100
+          const multiplier = 1000
           prices = [{ amount: Math.round(rawPrice * multiplier), currency_code: currency }]
         }
         

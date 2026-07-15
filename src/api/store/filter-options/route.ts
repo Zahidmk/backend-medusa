@@ -126,7 +126,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     // Add price range
     const priceRanges = (priceResult.rows || []).map((r: any) => {
       const code = (r.currency_code || "aed").toLowerCase()
-      const divisor = (code === "kwd" || code === "omr" || code === "bhd") ? 1000 : 100
+      const divisor = 1000
       return {
         currency_code: r.currency_code,
         min: (parseFloat(r.min_price) || 0) / divisor,
