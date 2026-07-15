@@ -301,7 +301,7 @@ async function upsertProduct(
   // Medusa stores prices in smallest unit (micro-units = actual × 1,000,000 for most currencies)
   // KWD/OMR (3 decimal places): 1 KWD = 1,000,000 micro-units
   // AED/USD/EUR (2 decimal places): 1 AED = 1,000,000 micro-units (Medusa uses 1M for all)
-  const rawPrice = p.list_price || 0
+  const rawPrice = p.retail_price || p.list_price || 0
   const price = Math.round(rawPrice * 1_000_000)
   const description = p.description_sale || p.description || ""
   const weight = p.weight ? String(p.weight) : null
@@ -387,9 +387,7 @@ async function upsertProduct(
     odoo_stock: p.qty_available || 0,
     synced_at: new Date().toISOString(),
     // ── Pricing ──────────────────────────────────────────────────────────
-    list_price: p.list_price || 0,
     compare_price: p.compare_list_price || 0,
-    cost_price: p.standard_price || p.cost_price || 0,
     retail_price: p.retail_price || 0,
     // ── Brand ────────────────────────────────────────────────────────────
     brand: brand,
@@ -449,10 +447,10 @@ async function upsertProduct(
       `SELECT pv.id as vid, pvps.price_set_id as psid FROM product_variant pv LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id WHERE pv.product_id = ? AND pv.deleted_at IS NULL LIMIT 1`,
       [prodId]
     )
-    // Always ensure allow_backorder=true on update
+    // Ensure allow_backorder=false so out of stock items cannot be bought
     if (varRes.rows?.length > 0) {
       await pg.raw(
-        `UPDATE product_variant SET allow_backorder = true, updated_at = NOW() WHERE id = ?`,
+        `UPDATE product_variant SET allow_backorder = false, updated_at = NOW() WHERE id = ?`,
         [varRes.rows[0].vid]
       )
     }
@@ -665,7 +663,7 @@ async function upsertProduct(
     variantId = genId("variant")
     await pg.raw(
       `INSERT INTO product_variant (id, product_id, title, sku, barcode, manage_inventory, allow_backorder, variant_rank, created_at, updated_at)
-       VALUES (?, ?, 'Default', ?, ?, true, true, 0, NOW(), NOW())`,
+       VALUES (?, ?, 'Default', ?, ?, true, false, 0, NOW(), NOW())`,
       [variantId, productId, sku, barcode]
     )
   }

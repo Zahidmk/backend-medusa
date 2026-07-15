@@ -897,7 +897,6 @@ class OdooSyncService {
         compare_price: product.compare_list_price || 0,
         retail_price: product.retail_price || 0,
         ecommerce_price: product.x_ecommerce_price || null,  // Separate website sales price
-        list_price: product.list_price || 0,  // Original ERP sales price
         currency: product.currency_id ? product.currency_id[1] : null,
 
         // ── Descriptions ──
@@ -985,15 +984,14 @@ class OdooSyncService {
           sku: (product.default_code as string) || `ODOO-${product.id}`,
           barcode: (product.barcode as string) || undefined,
           manage_inventory: product.is_storable || false,
-          allow_backorder: true, // Always allow backorder so Medusa doesn't block carts; Odoo is the source of truth for stock
+          allow_backorder: false, // Disabled backorders to prevent selling out of stock items
           inventory_quantity: Math.floor(product.qty_available || 0),
           weight: product.weight || 0,
           metadata: {
             odoo_product_id: product.id,
-            odoo_price: product.x_ecommerce_price || product.list_price || 0,
-            odoo_list_price: product.list_price || 0,
-            odoo_ecommerce_price: product.x_ecommerce_price || null,
-            odoo_price_amount: Math.round((product.x_ecommerce_price || product.list_price || 0) * currencyMultiplier),
+            odoo_price: product.retail_price || product.x_ecommerce_price || product.list_price || 0,
+            odoo_retail_price: product.retail_price || 0,
+            odoo_price_amount: Math.round((product.retail_price || product.x_ecommerce_price || product.list_price || 0) * currencyMultiplier),
             odoo_currency: currencyCode,
           },
         },

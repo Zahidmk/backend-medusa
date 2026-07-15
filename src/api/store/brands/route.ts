@@ -15,16 +15,23 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const offset = parseInt(req.query.offset as string) || 0
 
   const countResult = await pgConnection.raw(
-    `SELECT COUNT(*) as total FROM brand WHERE is_active = true AND deleted_at IS NULL`
+    `SELECT COUNT(DISTINCT b.id) as total 
+     FROM brand b
+     INNER JOIN product_brand pb ON pb.brand_id = b.id AND pb.deleted_at IS NULL
+     INNER JOIN product p ON p.id = pb.product_id AND p.deleted_at IS NULL AND p.status = 'published'
+     WHERE b.is_active = true AND b.deleted_at IS NULL`
   )
   const total = parseInt(countResult.rows[0].total)
 
   const result = await pgConnection.raw(
-    `SELECT id, name, slug, description, logo_url, banner_url,
-            is_active, is_special, display_order, created_at
-     FROM brand
-     WHERE is_active = true AND deleted_at IS NULL
-     ORDER BY display_order ASC NULLS LAST, name ASC
+    `SELECT DISTINCT ON (b.display_order, b.name, b.id) 
+            b.id, b.name, b.slug, b.description, b.logo_url, b.banner_url,
+            b.is_active, b.is_special, b.display_order, b.created_at
+     FROM brand b
+     INNER JOIN product_brand pb ON pb.brand_id = b.id AND pb.deleted_at IS NULL
+     INNER JOIN product p ON p.id = pb.product_id AND p.deleted_at IS NULL AND p.status = 'published'
+     WHERE b.is_active = true AND b.deleted_at IS NULL
+     ORDER BY b.display_order ASC NULLS LAST, b.name ASC, b.id
      LIMIT ? OFFSET ?`,
     [limit, offset]
   )

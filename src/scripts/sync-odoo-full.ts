@@ -339,17 +339,16 @@ export default async function syncOdooFull({ container }: ExecArgs) {
                   sku: (v.default_code as string) || `ODOO-${v.id}`,
                   barcode: (v.barcode as string) || undefined,
                   manage_inventory: odooProduct.is_storable || false,
-                  allow_backorder: odooProduct.allow_out_of_stock_order || false,
+                  allow_backorder: false,
                   inventory_quantity: Math.floor(v.qty_available || 0),
                   weight: v.weight || odooProduct.weight || 0,
                   options: variantOptions,
                   metadata: {
                     odoo_variant_id: v.id,
                     odoo_product_id: odooProduct.id,
-                    odoo_price: v.list_price || odooProduct.list_price || 0,
-                    odoo_price_amount: toSmallestUnit(v.list_price || odooProduct.list_price || 0),
+                    odoo_price: v.list_price || odooProduct.retail_price || odooProduct.list_price || 0,
+                    odoo_price_amount: toSmallestUnit(v.list_price || odooProduct.retail_price || odooProduct.list_price || 0),
                     odoo_currency: productCurrency,
-                    odoo_cost: v.standard_price || odooProduct.standard_price || 0,
                     odoo_stock: v.qty_available || 0,
                     odoo_forecasted: v.virtual_available || 0,
                   },
@@ -468,7 +467,7 @@ export default async function syncOdooFull({ container }: ExecArgs) {
             const fullProduct = await productService.retrieveProduct(medusaIdForPricing, { relations: ["variants"] })
             for (const variant of (fullProduct.variants || [])) {
               const variantMeta = (variant.metadata || {}) as Record<string, any>
-              const priceAmount = variantMeta.odoo_price_amount || toSmallestUnit(odooProduct.list_price || 0)
+              const priceAmount = variantMeta.odoo_price_amount || toSmallestUnit(odooProduct.retail_price || odooProduct.list_price || 0)
               const currency = variantMeta.odoo_currency || productCurrency
 
               const { data: existingLinks } = await query.graph({
