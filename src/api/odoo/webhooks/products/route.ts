@@ -187,7 +187,7 @@ interface OdooProductPayload {
   compare_list_price?: number        // strikethrough price on product page
   standard_price?: number            // cost price (Odoo field name) → saved as cost_price
   cost_price?: number                // alias for standard_price
-  retail_price?: number              // RRP / recommended retail price
+  x_studio_retail_price?: number              // RRP / recommended retail price
   currency_code?: string
   description_sale?: string
   description?: string
@@ -301,7 +301,7 @@ async function upsertProduct(
   // Medusa stores prices in smallest unit (micro-units = actual × 1,000,000 for most currencies)
   // KWD/OMR (3 decimal places): 1 KWD = 1,000,000 micro-units
   // AED/USD/EUR (2 decimal places): 1 AED = 1,000,000 micro-units (Medusa uses 1M for all)
-  const rawPrice = p.retail_price || p.list_price || 0
+  const rawPrice = p.x_studio_retail_price || p.list_price || 0
   const price = Math.round(rawPrice * 1_000_000)
   const description = p.description_sale || p.description || ""
   const weight = p.weight ? String(p.weight) : null
@@ -388,7 +388,7 @@ async function upsertProduct(
     synced_at: new Date().toISOString(),
     // ── Pricing ──────────────────────────────────────────────────────────
     compare_price: p.compare_list_price || 0,
-    retail_price: p.retail_price || 0,
+    retail_price: p.x_studio_retail_price || 0,
     // ── Brand ────────────────────────────────────────────────────────────
     brand: brand,
     brand_logo_url: brandLogoUrl,

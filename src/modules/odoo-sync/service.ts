@@ -48,7 +48,7 @@ export interface OdooProduct {
   list_price: number                    // Sales Price
   standard_price: number                // Cost
   compare_list_price: number            // Compare-to / Was price
-  retail_price: number                  // Retail price
+  x_studio_retail_price?: number        // Retail price
   x_ecommerce_price?: number            // eCommerce Website Sales Price (custom field)
   currency_id: M2O
 
@@ -289,7 +289,7 @@ export const ODOO_PRODUCT_TEMPLATE_FIELDS = [
   "sequence", "is_favorite", "color",
 
   // Prices
-  "list_price", "standard_price", "compare_list_price", "retail_price",
+  "list_price", "standard_price", "compare_list_price", "x_studio_retail_price",
   "x_ecommerce_price",
   "currency_id",
 
@@ -895,7 +895,7 @@ class OdooSyncService {
         // ── Prices ──
         cost_price: product.standard_price || 0,
         compare_price: product.compare_list_price || 0,
-        retail_price: product.retail_price || 0,
+        retail_price: product.x_studio_retail_price || 0,
         ecommerce_price: product.x_ecommerce_price || null,  // Separate website sales price
         currency: product.currency_id ? product.currency_id[1] : null,
 
@@ -989,9 +989,9 @@ class OdooSyncService {
           weight: product.weight || 0,
           metadata: {
             odoo_product_id: product.id,
-            odoo_price: product.retail_price || product.x_ecommerce_price || product.list_price || 0,
-            odoo_retail_price: product.retail_price || 0,
-            odoo_price_amount: Math.round((product.retail_price || product.x_ecommerce_price || product.list_price || 0) * currencyMultiplier),
+            odoo_price: product.x_studio_retail_price || product.x_ecommerce_price || product.list_price || 0,
+            odoo_retail_price: product.x_studio_retail_price || 0,
+            odoo_price_amount: Math.round((product.x_studio_retail_price || product.x_ecommerce_price || product.list_price || 0) * currencyMultiplier),
             odoo_currency: currencyCode,
           },
         },

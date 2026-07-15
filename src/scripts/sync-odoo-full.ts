@@ -346,8 +346,8 @@ export default async function syncOdooFull({ container }: ExecArgs) {
                   metadata: {
                     odoo_variant_id: v.id,
                     odoo_product_id: odooProduct.id,
-                    odoo_price: v.list_price || odooProduct.retail_price || odooProduct.list_price || 0,
-                    odoo_price_amount: toSmallestUnit(v.list_price || odooProduct.retail_price || odooProduct.list_price || 0),
+                    odoo_price: v.list_price || odooProduct.x_studio_retail_price || odooProduct.list_price || 0,
+                    odoo_price_amount: toSmallestUnit(v.list_price || odooProduct.x_studio_retail_price || odooProduct.list_price || 0),
                     odoo_currency: productCurrency,
                     odoo_stock: v.qty_available || 0,
                     odoo_forecasted: v.virtual_available || 0,
@@ -467,7 +467,7 @@ export default async function syncOdooFull({ container }: ExecArgs) {
             const fullProduct = await productService.retrieveProduct(medusaIdForPricing, { relations: ["variants"] })
             for (const variant of (fullProduct.variants || [])) {
               const variantMeta = (variant.metadata || {}) as Record<string, any>
-              const priceAmount = variantMeta.odoo_price_amount || toSmallestUnit(odooProduct.retail_price || odooProduct.list_price || 0)
+              const priceAmount = variantMeta.odoo_price_amount || toSmallestUnit(odooProduct.x_studio_retail_price || odooProduct.list_price || 0)
               const currency = variantMeta.odoo_currency || productCurrency
 
               const { data: existingLinks } = await query.graph({
