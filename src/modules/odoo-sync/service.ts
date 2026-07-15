@@ -414,6 +414,7 @@ class OdooSyncService {
     })
 
     if (response.data.error) {
+      console.error("\n❌ Odoo Error Raw Response:", JSON.stringify(response.data.error, null, 2))
       const msg = response.data.error.message || response.data.error.data?.message || "Unknown Odoo error"
       throw new Error(`Odoo Error: ${msg}`)
     }
