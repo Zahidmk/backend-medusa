@@ -189,8 +189,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         let prices: any[] = []
         if (v.price != null) {
           prices = [{ amount: parseFloat(v.price), currency_code: v.currency_code || currency }]
-        } else if (pMeta.retail_price || pMeta.list_price || v.variant_metadata?.odoo_price) {
-          const rawPrice = parseFloat(pMeta.retail_price || pMeta.list_price || v.variant_metadata?.odoo_price)
+        } else if (pMeta.retail_price || v.variant_metadata?.odoo_price) {
+          const rawPrice = parseFloat(pMeta.retail_price || v.variant_metadata?.odoo_price)
           const multiplier = 1000
           prices = [{ amount: Math.round(rawPrice * multiplier), currency_code: currency }]
         }

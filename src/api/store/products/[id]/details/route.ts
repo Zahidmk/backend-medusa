@@ -248,8 +248,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       let price = v.price ? parseFloat(v.price) : null;
       if (price == null) {
         const vMeta = v.variant_metadata || {};
-        if (vMeta.odoo_price || metadata.retail_price || metadata.list_price) {
-          const rawPrice = parseFloat(vMeta.odoo_price || metadata.retail_price || metadata.list_price);
+        if (vMeta.odoo_price || metadata.retail_price) {
+          const rawPrice = parseFloat(vMeta.odoo_price || metadata.retail_price);
           const multiplier = 1000;
           price = Math.round(rawPrice * multiplier);
         }
