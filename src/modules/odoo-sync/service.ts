@@ -49,6 +49,7 @@ export interface OdooProduct {
   standard_price: number                // Cost
   compare_list_price: number            // Compare-to / Was price
 
+  retail_price?: number                 // Retail price
   x_ecommerce_price?: number            // eCommerce Website Sales Price (custom field)
   currency_id: M2O
 
@@ -289,7 +290,7 @@ export const ODOO_PRODUCT_TEMPLATE_FIELDS = [
   "sequence", "is_favorite", "color",
 
   // Prices
-  "list_price", "standard_price", "compare_list_price",
+  "list_price", "standard_price", "compare_list_price", "retail_price",
   "x_ecommerce_price",
   "currency_id",
 

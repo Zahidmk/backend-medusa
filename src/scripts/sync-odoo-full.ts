@@ -14,7 +14,7 @@
  *     a. Creates/updates the product with all metadata
  *     b. Resolves and syncs variants with attributes (Color, Size, etc.)
  *     c. Downloads and attaches images (main + gallery)
- *     d. Creates pricing records (list_price, compare_price)
+ *     d. Creates pricing records (list_price: number; compare_list_price: number; retail_price?: number)
  *     e. Sets inventory levels
  *     f. Maps SEO fields, ratings, ribbons, tags
  *     g. Stores cross-sell IDs for frontend resolution

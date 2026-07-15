@@ -107,7 +107,7 @@ export default async function syncTestProducts({ container }: ExecArgs) {
       if (odooProduct.seller_ids?.length > 0) {
         try {
           const vendorRecords = await odoo.fetchVendors(odooProduct.seller_ids)
-          vendors = vendorRecords.map((v) => ({
+          vendors = vendorRecords.map(v => ({
             name: v.partner_id ? v.partner_id[1] : "Unknown",
             price: v.price,
             currency: v.currency_id ? v.currency_id[1] : "OMR",
