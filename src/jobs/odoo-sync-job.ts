@@ -204,8 +204,8 @@ export default async function odooSyncJob({ container }: { container: MedusaCont
         }
 
         // Sync prices via Pricing module
-        // Priority: retail_price > x_ecommerce_price (website-specific) > list_price (ERP default)
-        const price = odooProduct.retail_price || odooProduct.x_ecommerce_price || odooProduct.list_price || (odooProduct as any).lst_price || 0;
+        // Priority: retail_price > list_price (ERP default)
+        const price = odooProduct.retail_price || odooProduct.list_price || (odooProduct as any).lst_price || 0;
         const currency = "kwd";
 
         if (price > 0) {
