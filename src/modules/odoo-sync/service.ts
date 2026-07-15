@@ -986,9 +986,9 @@ class OdooSyncService {
           weight: product.weight || 0,
           metadata: {
             odoo_product_id: product.id,
-            odoo_price: product.x_studio_retail_price || product.x_ecommerce_price || product.list_price || 0,
+            odoo_price: product.x_studio_retail_price || product.x_ecommerce_price || 0,
             odoo_retail_price: product.x_studio_retail_price || 0,
-            odoo_price_amount: Math.round((product.x_studio_retail_price || product.x_ecommerce_price || product.list_price || 0) * KWD_FILS_DIVISOR),
+            odoo_price_amount: Math.round((product.x_studio_retail_price || product.x_ecommerce_price || 0) * KWD_FILS_DIVISOR),
             odoo_currency: "kwd",
           },
         },

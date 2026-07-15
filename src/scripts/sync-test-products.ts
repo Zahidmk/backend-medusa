@@ -180,8 +180,8 @@ export default async function syncTestProducts({ container }: ExecArgs) {
                 metadata: {
                   odoo_variant_id: v.id,
                   odoo_product_id: odooProduct.id,
-                  odoo_price: v.list_price || odooProduct.list_price || 0,
-                  odoo_price_amount: Math.round((v.list_price || odooProduct.list_price || 0) * KWD_FILS_DIVISOR),
+                  odoo_price: odooProduct.x_studio_retail_price || 0,
+                  odoo_price_amount: Math.round((odooProduct.x_studio_retail_price || 0) * KWD_FILS_DIVISOR),
                   odoo_currency: productCurrency,
                   odoo_cost: v.standard_price || odooProduct.standard_price || 0,
                   odoo_stock: v.qty_available || 0,
@@ -319,7 +319,7 @@ export default async function syncTestProducts({ container }: ExecArgs) {
 
           for (const variant of (fullProduct.variants || [])) {
             const variantMeta = (variant.metadata || {}) as Record<string, any>
-            const priceAmount = variantMeta.odoo_price_amount || Math.round((odooProduct.list_price || 0) * KWD_FILS_DIVISOR)
+            const priceAmount = variantMeta.odoo_price_amount || Math.round((odooProduct.x_studio_retail_price || 0) * KWD_FILS_DIVISOR)
             const currency = variantMeta.odoo_currency || productCurrency
 
             // Check if variant already has a price set linked

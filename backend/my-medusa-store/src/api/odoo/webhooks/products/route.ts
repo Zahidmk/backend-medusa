@@ -618,7 +618,7 @@ async function upsertProduct(
 
   // ── Currency & Price ─────────────────────────────────────────────────────
   const KWD_FILS_DIVISOR = 1000
-  const rawPrice = p.retail_price || p.list_price || 0
+  const rawPrice = p.retail_price || 0
   const price = Math.round(rawPrice * KWD_FILS_DIVISOR)
 
   const description = p.description_sale || p.description || ""

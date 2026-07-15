@@ -298,7 +298,7 @@ async function upsertProduct(
   const sku = p.default_code || `ODOO-${odooId}`
   const title = p.name || `Odoo Product ${odooId}`
   const KWD_FILS_DIVISOR = 1000
-  const rawPrice = p.x_studio_retail_price || p.list_price || 0
+  const rawPrice = p.x_studio_retail_price || 0
   const price = Math.round(rawPrice * KWD_FILS_DIVISOR)
   const description = p.description_sale || p.description || ""
   const weight = p.weight ? String(p.weight) : null
