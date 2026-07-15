@@ -858,12 +858,9 @@ class OdooSyncService {
       description = product.description
     }
 
-    // Currency code from Odoo (normalize to lowercase)
-    const currencyCode = product.currency_id
-      ? product.currency_id[1].toLowerCase()
-      : "kwd"
-    // Currency multiplier: KWD=1000, OMR=1000 (3 decimals), others=100
-    const currencyMultiplier = (currencyCode === "kwd" || currencyCode === "omr") ? 1000 : 100
+    // Currency code is always kwd
+    const currencyCode = "kwd"
+    const KWD_FILS_DIVISOR = 1000
 
     return {
       title: product.name,
@@ -991,8 +988,8 @@ class OdooSyncService {
             odoo_product_id: product.id,
             odoo_price: product.x_studio_retail_price || product.x_ecommerce_price || product.list_price || 0,
             odoo_retail_price: product.x_studio_retail_price || 0,
-            odoo_price_amount: Math.round((product.x_studio_retail_price || product.x_ecommerce_price || product.list_price || 0) * currencyMultiplier),
-            odoo_currency: currencyCode,
+            odoo_price_amount: Math.round((product.x_studio_retail_price || product.x_ecommerce_price || product.list_price || 0) * KWD_FILS_DIVISOR),
+            odoo_currency: "kwd",
           },
         },
       ],

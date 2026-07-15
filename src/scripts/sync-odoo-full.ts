@@ -59,8 +59,7 @@ function slugify(text: string): string {
 }
 
 function toSmallestUnit(amount: number): number {
-  // KWD/OMR: 1 unit = 1000 smallest (3 decimal places)
-  return Math.round(amount * Math.pow(10, DEFAULT_CURRENCY_DECIMALS))
+  return Math.round(amount * 1000)
 }
 
 /**
@@ -280,10 +279,8 @@ export default async function syncOdooFull({ container }: ExecArgs) {
           vendors,
         })
 
-        // Determine currency from product
-        const productCurrency = odooProduct.currency_id
-          ? odooProduct.currency_id[1].toLowerCase()
-          : DEFAULT_CURRENCY_CODE
+        // Currency is always KWD
+        const productCurrency = "kwd"
 
         // ── Handle variants with attributes ──
         if (odooProduct.product_variant_count > 1 && odooProduct.attribute_line_ids?.length > 0) {

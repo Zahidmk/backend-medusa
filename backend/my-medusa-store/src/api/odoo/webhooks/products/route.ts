@@ -617,56 +617,9 @@ async function upsertProduct(
   const title = p.name || `Odoo Product ${odooId}`
 
   // ── Currency & Price ─────────────────────────────────────────────────────
-  // This is a Kuwait-only store (region=Kuwait, currency=KWD).
-  // Medusa stores prices in the SMALLEST UNIT (fils: 1 KWD = 1000 fils).
-  // Odoo may send prices in whole KWD (e.g. 89 = 89 KWD) or AED.
-  // Strategy:
-  //   1. Always force currency to "kwd"
-  //   2. If Odoo sends AED → auto-convert: 1 AED ≈ 0.083 KWD
-  //   3. If the price looks like whole KWD (< 1000) → multiply by 1000 to get fils
-  //   4. If the price is already ≥ 1000 → assume it's already in fils
-  const AED_TO_KWD = 0.083  // approximate exchange rate
   const KWD_FILS_DIVISOR = 1000
-  const currency = "kwd"    // always KWD for this store
-  const rawPrice = p.list_price || 0
-  // Odoo may send currency as: currency_code:"aed", OR currency_id:[2,"AED"]
-  let incomingCurrency = (p.currency_code || "kwd").toLowerCase()
-  if (incomingCurrency === "kwd" && (p as any).currency_id) {
-    // Parse Odoo tuple format: [2, "AED"] or "AED"
-    const cid = (p as any).currency_id
-    if (Array.isArray(cid) && cid.length >= 2 && typeof cid[1] === "string") {
-      incomingCurrency = cid[1].toLowerCase()
-    } else if (typeof cid === "string") {
-      incomingCurrency = cid.toLowerCase()
-    }
-  }
-
-  let price: number
-  if (rawPrice === 0) {
-    price = 0
-  } else if (incomingCurrency === "aed") {
-    // Convert AED → KWD fils: amount × rate × 1000
-    price = Math.round(rawPrice * AED_TO_KWD * KWD_FILS_DIVISOR)
-    console.log(`[Odoo Webhook] Price converted: ${rawPrice} AED → ${price} fils (${(price / KWD_FILS_DIVISOR).toFixed(3)} KWD)`)
-  } else if (incomingCurrency === "usd") {
-    // Convert USD → KWD fils: 1 USD ≈ 0.307 KWD
-    price = Math.round(rawPrice * 0.307 * KWD_FILS_DIVISOR)
-    console.log(`[Odoo Webhook] Price converted: ${rawPrice} USD → ${price} fils (${(price / KWD_FILS_DIVISOR).toFixed(3)} KWD)`)
-  } else if (incomingCurrency === "eur") {
-    // Convert EUR → KWD fils: 1 EUR ≈ 0.335 KWD
-    price = Math.round(rawPrice * 0.335 * KWD_FILS_DIVISOR)
-    console.log(`[Odoo Webhook] Price converted: ${rawPrice} EUR → ${price} fils (${(price / KWD_FILS_DIVISOR).toFixed(3)} KWD)`)
-  } else {
-    // Incoming is KWD — check if it's already in fils or whole KWD
-    if (rawPrice > 0 && rawPrice < 1000) {
-      // Looks like whole KWD (e.g. 89) → convert to fils
-      price = Math.round(rawPrice * KWD_FILS_DIVISOR)
-      console.log(`[Odoo Webhook] Price: ${rawPrice} KWD → ${price} fils`)
-    } else {
-      // Already in fils (e.g. 89000) or zero
-      price = Math.round(rawPrice)
-    }
-  }
+  const rawPrice = p.retail_price || p.list_price || 0
+  const price = Math.round(rawPrice * KWD_FILS_DIVISOR)
 
   const description = p.description_sale || p.description || ""
   const weight = p.weight ? String(p.weight) : null
@@ -874,10 +827,21 @@ async function upsertProduct(
     }
     if (varRes.rows?.length > 0 && varRes.rows[0].psid && price > 0) {
       const rawAmount = JSON.stringify({ value: String(price), precision: 20 })
-      await pg.raw(
-        `UPDATE price SET amount=?, raw_amount=?, currency_code=?, updated_at=NOW() WHERE price_set_id=? AND deleted_at IS NULL`,
-        [price, rawAmount, currency, varRes.rows[0].psid]
+      const existsKwd = await pg.raw(
+        `SELECT id FROM price WHERE price_set_id=? AND currency_code='kwd' AND deleted_at IS NULL LIMIT 1`,
+        [varRes.rows[0].psid]
       )
+      if (existsKwd.rows?.length === 0) {
+        await pg.raw(
+          `INSERT INTO price (id, price_set_id, currency_code, amount, raw_amount, rules_count, created_at, updated_at) VALUES (?, ?, 'kwd', ?, ?, 0, NOW(), NOW())`,
+          [genId("price"), varRes.rows[0].psid, price, rawAmount]
+        )
+      } else {
+        await pg.raw(
+          `UPDATE price SET amount=?, raw_amount=?, updated_at=NOW() WHERE price_set_id=? AND currency_code='kwd' AND deleted_at IS NULL`,
+          [price, rawAmount, varRes.rows[0].psid]
+        )
+      }
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1070,8 +1034,8 @@ async function upsertProduct(
     )
     const rawAmount = JSON.stringify({ value: String(price), precision: 20 })
     await pg.raw(
-      `INSERT INTO price (id, price_set_id, currency_code, amount, raw_amount, rules_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, NOW(), NOW())`,
-      [genId("price"), priceSetId, currency, price, rawAmount]
+      `INSERT INTO price (id, price_set_id, currency_code, amount, raw_amount, rules_count, created_at, updated_at) VALUES (?, ?, 'kwd', ?, ?, 0, NOW(), NOW())`,
+      [genId("price"), priceSetId, price, rawAmount]
     )
   }
 

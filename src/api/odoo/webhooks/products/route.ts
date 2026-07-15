@@ -297,12 +297,9 @@ async function upsertProduct(
   const odooId = p.odoo_id
   const sku = p.default_code || `ODOO-${odooId}`
   const title = p.name || `Odoo Product ${odooId}`
-  const currency = (p.currency_code || "kwd").toLowerCase()
-  // Medusa stores prices in smallest unit (micro-units = actual × 1,000,000 for most currencies)
-  // KWD/OMR (3 decimal places): 1 KWD = 1,000,000 micro-units
-  // AED/USD/EUR (2 decimal places): 1 AED = 1,000,000 micro-units (Medusa uses 1M for all)
+  const KWD_FILS_DIVISOR = 1000
   const rawPrice = p.x_studio_retail_price || p.list_price || 0
-  const price = Math.round(rawPrice * 1_000_000)
+  const price = Math.round(rawPrice * KWD_FILS_DIVISOR)
   const description = p.description_sale || p.description || ""
   const weight = p.weight ? String(p.weight) : null
   // Default all newly synced products to "draft" so they can be reviewed before publishing
@@ -463,28 +460,20 @@ async function upsertProduct(
     }
     if (varRes.rows?.length > 0 && varRes.rows[0].psid && price > 0) {
       const rawAmount = JSON.stringify({ value: String(price), precision: 20 })
-      await pg.raw(
-        `UPDATE price SET amount=?, raw_amount=?, currency_code=?, updated_at=NOW() WHERE price_set_id=? AND deleted_at IS NULL`,
-        [price, rawAmount, currency, varRes.rows[0].psid]
+      const existsKwd = await pg.raw(
+        `SELECT id FROM price WHERE price_set_id=? AND currency_code='kwd' AND deleted_at IS NULL LIMIT 1`,
+        [varRes.rows[0].psid]
       )
-      // Ensure a KWD price always exists (store region requires it)
-      if (currency !== 'kwd') {
-        const existsKwd = await pg.raw(
-          `SELECT id FROM price WHERE price_set_id=? AND currency_code='kwd' AND deleted_at IS NULL LIMIT 1`,
-          [varRes.rows[0].psid]
+      if (existsKwd.rows?.length === 0) {
+        await pg.raw(
+          `INSERT INTO price (id, price_set_id, currency_code, amount, raw_amount, rules_count, created_at, updated_at) VALUES (?, ?, 'kwd', ?, ?, 0, NOW(), NOW())`,
+          [genId("price"), varRes.rows[0].psid, price, rawAmount]
         )
-        if (existsKwd.rows?.length === 0) {
-          const rawKwd = JSON.stringify({ value: String(price), precision: 20 })
-          await pg.raw(
-            `INSERT INTO price (id, price_set_id, currency_code, amount, raw_amount, rules_count, created_at, updated_at) VALUES (?, ?, 'kwd', ?, ?, 0, NOW(), NOW())`,
-            [genId("price"), varRes.rows[0].psid, price, rawKwd]
-          )
-        } else {
-          await pg.raw(
-            `UPDATE price SET amount=?, raw_amount=?, updated_at=NOW() WHERE price_set_id=? AND currency_code='kwd' AND deleted_at IS NULL`,
-            [price, rawAmount, varRes.rows[0].psid]
-          )
-        }
+      } else {
+        await pg.raw(
+          `UPDATE price SET amount=?, raw_amount=?, updated_at=NOW() WHERE price_set_id=? AND currency_code='kwd' AND deleted_at IS NULL`,
+          [price, rawAmount, varRes.rows[0].psid]
+        )
       }
     }
 
@@ -669,8 +658,7 @@ async function upsertProduct(
   }
 
   // ── Price ─────────────────────────────────────────────────────────────────
-  // Always insert a KWD price since the store region requires it.
-  // Also insert the original currency if different from KWD.
+  // Always insert a KWD price
   if (price > 0) {
     const priceSetId = genId("pset")
     await pg.raw(`INSERT INTO price_set (id, created_at, updated_at) VALUES (?, NOW(), NOW())`, [priceSetId])
@@ -679,18 +667,10 @@ async function upsertProduct(
       [genId("pvps"), variantId, priceSetId]
     )
     const rawAmount = JSON.stringify({ value: String(price), precision: 20 })
-    // Always insert KWD price
     await pg.raw(
       `INSERT INTO price (id, price_set_id, currency_code, amount, raw_amount, rules_count, created_at, updated_at) VALUES (?, ?, 'kwd', ?, ?, 0, NOW(), NOW())`,
       [genId("price"), priceSetId, price, rawAmount]
     )
-    // Also insert original currency if different from KWD
-    if (currency && currency !== 'kwd') {
-      await pg.raw(
-        `INSERT INTO price (id, price_set_id, currency_code, amount, raw_amount, rules_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, NOW(), NOW())`,
-        [genId("price"), priceSetId, currency, price, rawAmount]
-      )
-    }
   }
 
   // ── Product Options (attributes from attribute_line_ids / attributes) ─────

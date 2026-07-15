@@ -124,10 +124,8 @@ export default async function syncTestProducts({ container }: ExecArgs) {
       })
 
       // Determine product currency
-      const productCurrency = odooProduct.currency_id
-        ? odooProduct.currency_id[1].toLowerCase()
-        : "omr"
-      const currencyMultiplier = (productCurrency === "kwd" || productCurrency === "omr") ? 1000 : 100
+      const productCurrency = "kwd"
+      const KWD_FILS_DIVISOR = 1000
 
       // ── Handle variants with attributes ──
       if (odooProduct.product_variant_count > 1 && odooProduct.attribute_line_ids?.length > 0) {
@@ -183,7 +181,7 @@ export default async function syncTestProducts({ container }: ExecArgs) {
                   odoo_variant_id: v.id,
                   odoo_product_id: odooProduct.id,
                   odoo_price: v.list_price || odooProduct.list_price || 0,
-                  odoo_price_amount: Math.round((v.list_price || odooProduct.list_price || 0) * currencyMultiplier),
+                  odoo_price_amount: Math.round((v.list_price || odooProduct.list_price || 0) * KWD_FILS_DIVISOR),
                   odoo_currency: productCurrency,
                   odoo_cost: v.standard_price || odooProduct.standard_price || 0,
                   odoo_stock: v.qty_available || 0,
@@ -321,7 +319,7 @@ export default async function syncTestProducts({ container }: ExecArgs) {
 
           for (const variant of (fullProduct.variants || [])) {
             const variantMeta = (variant.metadata || {}) as Record<string, any>
-            const priceAmount = variantMeta.odoo_price_amount || Math.round((odooProduct.list_price || 0) * currencyMultiplier)
+            const priceAmount = variantMeta.odoo_price_amount || Math.round((odooProduct.list_price || 0) * KWD_FILS_DIVISOR)
             const currency = variantMeta.odoo_currency || productCurrency
 
             // Check if variant already has a price set linked
