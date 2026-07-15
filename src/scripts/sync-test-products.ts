@@ -110,7 +110,7 @@ export default async function syncTestProducts({ container }: ExecArgs) {
           vendors = vendorRecords.map(v => ({
             name: v.partner_id ? v.partner_id[1] : "Unknown",
             price: v.price,
-            currency: v.currency_id ? v.currency_id[1] : "OMR",
+            currency: v.currency_id ? v.currency_id[1] : "KWD",
             lead_time: v.delay || 0,
           }))
         } catch { /* ignore */ }
