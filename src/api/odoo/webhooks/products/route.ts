@@ -241,6 +241,7 @@ interface OdooProductPayload {
   attributes?: Record<string, string> // computed from attribute_line_ids e.g. {"Color":"Black","Size":"M"}
   attribute_line_ids?: Record<string, string> | Array<{name: string; values: string[]}> // raw Odoo format
   features?: string[]                 // bullet-point feature list
+  specifications?: Array<{key: string, value: string, primary: boolean}> // custom product specifications
   // ──────────────────────────────────────────────────────────────────────────
   [key: string]: any
 }
@@ -419,6 +420,7 @@ async function upsertProduct(
     // ── Specifications / Attributes ───────────────────────────────────────
     attributes: attributes,
     features: Array.isArray(p.features) ? p.features : [],
+    specifications: Array.isArray(p.specifications) ? p.specifications : [],
     // ─────────────────────────────────────────────────────────────────────
   }
 
