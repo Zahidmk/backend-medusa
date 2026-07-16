@@ -324,6 +324,12 @@ async function main() {
       try {
         const odooIdStr = String(product.id);
 
+        // ── Brand name ──
+        const brandName = product.brand_id?.[1] ||
+          product.custom_brand_id?.[1] ||
+          product.x_studio_brand_1 ||
+          null;
+
         // ── Check if already exists ──
         if (existingOdooIds.has(odooIdStr)) {
           // Update metadata + thumbnail if missing (fast)
@@ -346,6 +352,51 @@ async function main() {
             Math.floor(product.qty_available || 0),
             thumbUrl,
           ]);
+
+          // ── Auto-create / link brand on UPDATE ──
+          if (brandName && typeof brandName === 'string' && brandName.trim()) {
+            try {
+              const brandSlug = brandName
+                .toLowerCase()
+                .replace(/[^a-z0-9\s-]/g, '')
+                .replace(/\s+/g, '-')
+                .substring(0, 100);
+
+              let brandId = brandSlugMap.get(brandSlug) || brandNameMap.get(brandName.toLowerCase());
+
+              if (!brandId) {
+                brandId = genId('brand');
+                const brandOdooId = product.brand_id?.[0] || product.custom_brand_id?.[0] || null;
+                const brandImageUrl = brandOdooId
+                  ? `${ODOO_CONFIG.url}/web/image/custom.product.brand/${brandOdooId}/image_1920`
+                  : null;
+
+                await db.query(`
+                  INSERT INTO brand (id, name, slug, is_active, is_special, logo_url, created_at, updated_at)
+                  VALUES ($1, $2, $3, true, false, $4, NOW(), NOW())
+                  ON CONFLICT DO NOTHING
+                `, [brandId, brandName.substring(0, 200), brandSlug, brandImageUrl]);
+
+                // Re-read actual ID
+                const { rows: br } = await db.query(
+                  `SELECT id FROM brand WHERE slug = $1 AND deleted_at IS NULL LIMIT 1`,
+                  [brandSlug]
+                );
+                brandId = br[0]?.id || brandId;
+                brandSlugMap.set(brandSlug, brandId);
+                brandNameMap.set(brandName.toLowerCase(), brandId);
+              }
+
+              await db.query(`
+                INSERT INTO product_brand (id, product_id, brand_id, created_at, updated_at)
+                VALUES ($1, $2, $3, NOW(), NOW())
+                ON CONFLICT DO NOTHING
+              `, [genId('pbr'), existingMedusaId, brandId]);
+            } catch (brandErr) {
+              // Non-fatal: brand link failure shouldn't rollback the product
+            }
+          }
+
           totalUpdated++;
           continue;
         }
@@ -363,11 +414,7 @@ async function main() {
         // ── Description ──
         const description = getDescription(product);
 
-        // ── Brand name ──
-        const brandName = product.brand_id?.[1] ||
-          product.custom_brand_id?.[1] ||
-          product.x_studio_brand_1 ||
-          null;
+        // Brand name is now derived at the top of the loop
 
         // ── Price (KWD fils) ──
         const priceKwd = Math.round((product.list_price || 0) * CURRENCY_MULTIPLIER);
