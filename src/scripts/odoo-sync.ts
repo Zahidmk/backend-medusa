@@ -133,7 +133,7 @@ export default async function odooSync({ container }: ExecArgs) {
   const fields = [
     "id", "name", "default_code", "barcode",
     "list_price", "compare_list_price",
-    "description_sale", "categ_id", "brand_id", "x_studio_brand_1",
+    "description_sale", "categ_id", "brand_id", "x_studio_brand_1", "custom_brand_id",
     "weight", "qty_available", "is_published", "website_url",
   ]
 
@@ -141,7 +141,7 @@ export default async function odooSync({ container }: ExecArgs) {
     id: number; name: string; default_code: string | false; barcode: string | false
     list_price: number; compare_list_price: number
     description_sale: string | false; categ_id: [number, string] | false
-    brand_id: [number, string] | false; x_studio_brand_1: string | false
+    brand_id: [number, string] | false; x_studio_brand_1: string | false; custom_brand_id?: [number, string] | false
     weight: number; qty_available: number; is_published: boolean
     website_url: string | false
   }
@@ -195,8 +195,9 @@ export default async function odooSync({ container }: ExecArgs) {
     const odooIdStr = String(p.id)
 
     try {
-      const brand = p.brand_id && Array.isArray(p.brand_id) ? p.brand_id[1]
-        : (p.x_studio_brand_1 || null)
+      const brandName = (Array.isArray(p.brand_id) ? p.brand_id[1] : null) || (Array.isArray(p.custom_brand_id) ? p.custom_brand_id[1] : null) || p.x_studio_brand_1 || null;
+      const brandOdooId = (Array.isArray(p.custom_brand_id) ? p.custom_brand_id[0] : null) || (Array.isArray(p.brand_id) ? p.brand_id[0] : null) || null;
+      const brand = brandName;
       const category = p.categ_id && Array.isArray(p.categ_id) ? p.categ_id[1] : null
       const status = p.is_published === false ? "draft" : "published"
 
@@ -280,6 +281,54 @@ export default async function odooSync({ container }: ExecArgs) {
         existingByOdooId.set(odooIdStr, { id: productId, handle })
         existingBySku.set(sku, productId)
         created++
+      }
+
+      const currentProdId = existingProdId || existingByOdooId.get(odooIdStr)?.id || existingBySku.get(sku);
+
+      if (currentProdId) {
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // BRAND SYNC
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        const brandImageUrl = brandOdooId
+          ? `${odooUrl.replace(/\/$/, '')}/web/image/custom.product.brand/${brandOdooId}/image_1920`
+          : null;
+
+        if (brandName && typeof brandName === "string") {
+          try {
+            const brandSlug = brandName.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").substring(0, 100);
+            const existingBrand = await pg.raw(
+              `SELECT id, logo_url FROM brand WHERE slug = ? AND deleted_at IS NULL LIMIT 1`,
+              [brandSlug]
+            );
+            let brandId: string;
+            if (existingBrand.rows?.length > 0) {
+              brandId = existingBrand.rows[0].id;
+              const existingLogo = existingBrand.rows[0].logo_url;
+              if (brandImageUrl && (existingLogo !== brandImageUrl)) {
+                await pg.raw(`UPDATE brand SET logo_url = ?, updated_at = NOW() WHERE id = ?`, [brandImageUrl, brandId]);
+              }
+            } else {
+              brandId = `brand_${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+              await pg.raw(
+                `INSERT INTO brand (id, name, slug, is_active, is_special, logo_url, created_at, updated_at) VALUES (?, ?, ?, true, true, ?, NOW(), NOW())`,
+                [brandId, brandName, brandSlug, brandImageUrl]
+              );
+            }
+            // Link product to brand
+            const existingLink = await pg.raw(
+              `SELECT id FROM product_brand WHERE product_id = ? AND brand_id = ? AND deleted_at IS NULL LIMIT 1`,
+              [currentProdId, brandId]
+            );
+            if (!existingLink.rows?.length) {
+              await pg.raw(
+                `INSERT INTO product_brand (id, product_id, brand_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())`,
+                [`pbr_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 8)}`, currentProdId, brandId]
+              );
+            }
+          } catch (brandErr: any) {
+            console.warn(`[Odoo Sync Script] Brand sync failed for ${p.name}: ${brandErr.message}`);
+          }
+        }
       }
 
       if ((created + updated) % 100 === 0 || i === allProducts.length - 1) {
