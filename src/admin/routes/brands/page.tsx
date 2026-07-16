@@ -383,8 +383,14 @@ const BrandCard = ({
   // Resolve logo URL for the admin UI
   const resolvedLogoUrl = (() => {
     if (!brand.logo_url) return null
-    if (brand.logo_url.startsWith("/brands/")) return `https://website.markasouqs.com${brand.logo_url}`
-    if (brand.logo_url.includes("oskarllc-new")) return null // Odoo placeholders
+    // Already a full URL (Odoo or external) — use directly
+    if (brand.logo_url.startsWith("http://") || brand.logo_url.startsWith("https://")) {
+      return brand.logo_url
+    }
+    // Relative static upload path → prefix with production server URL
+    if (brand.logo_url.startsWith("/static/uploads/") || brand.logo_url.startsWith("/brands/")) {
+      return `https://website.markasouqs.com${brand.logo_url}`
+    }
     return brand.logo_url
   })()
 
