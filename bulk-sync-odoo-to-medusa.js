@@ -254,6 +254,13 @@ async function main() {
   const salesChannelId = scRows[0]?.id || null;
   console.log(`🛒 Sales Channel ID: ${salesChannelId || '⚠️  NONE FOUND'}\n`);
 
+  // 6b. Get the default stock location ID (needed for inventory levels)
+  const { rows: locRows } = await db.query(
+    `SELECT id FROM stock_location WHERE deleted_at IS NULL LIMIT 1`
+  );
+  const stockLocationId = locRows[0]?.id || null;
+  console.log(`📦 Stock Location ID: ${stockLocationId || '⚠️  NONE FOUND'}\n`);
+
   // 7. Load/cache brand map { brandName(lower) → brandId }
   const { rows: brandRows } = await db.query(
     `SELECT id, name, slug FROM brand WHERE deleted_at IS NULL`
@@ -535,7 +542,46 @@ async function main() {
             `, [genId('psc'), productId, salesChannelId]);
           }
 
-          // ── Auto-create / link brand ──
+          // ── Inventory item + level (so stock shows in Medusa admin) ──
+          if (product.is_storable || product.qty_available > 0) {
+            try {
+              const stockQty = Math.max(0, Math.round(product.qty_available || 0));
+              const invItemId = genId('iitem');
+
+              await db.query(`
+                INSERT INTO inventory_item (id, sku, title, created_at, updated_at)
+                VALUES ($1, $2, $3, NOW(), NOW())
+                ON CONFLICT DO NOTHING
+              `, [invItemId, sku, product.name.substring(0, 500)]);
+
+              // Re-read the actual ID (in case ON CONFLICT happened)
+              const { rows: existInv } = await db.query(
+                `SELECT id FROM inventory_item WHERE sku = $1 LIMIT 1`,
+                [sku]
+              );
+              const realInvId = existInv[0]?.id || invItemId;
+
+              // Link variant → inventory item
+              await db.query(`
+                INSERT INTO product_variant_inventory_item (id, variant_id, inventory_item_id, required_quantity, created_at, updated_at)
+                VALUES ($1, $2, $3, 1, NOW(), NOW())
+                ON CONFLICT DO NOTHING
+              `, [genId('pvitem'), variantId, realInvId]);
+
+              // Create inventory level at the default stock location
+              if (stockLocationId && stockQty > 0) {
+                await db.query(`
+                  INSERT INTO inventory_level (id, inventory_item_id, location_id, stocked_quantity, reserved_quantity, incoming_quantity, created_at, updated_at)
+                  VALUES ($1, $2, $3, $4, 0, 0, NOW(), NOW())
+                  ON CONFLICT DO NOTHING
+                `, [genId('iloc'), realInvId, stockLocationId, stockQty]);
+              }
+            } catch (invErr) {
+              // Non-fatal — don't stop the sync for an inventory error
+            }
+          }
+
+
           if (brandName && typeof brandName === 'string' && brandName.trim()) {
             try {
               const brandSlug = brandName
