@@ -613,6 +613,60 @@ async function upsertProduct(
       }
     }
 
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // BRAND SYNC
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Auto-create and link brand
+    const brandName = (Array.isArray(p.brand_id) ? p.brand_id[1] : null) || (Array.isArray(p.custom_brand_id) ? p.custom_brand_id[1] : null) || p.brand || p.x_studio_brand_1 || null;
+    const brandOdooId = (Array.isArray(p.custom_brand_id) ? p.custom_brand_id[0] : null) || (Array.isArray(p.brand_id) ? p.brand_id[0] : null) || null;
+    // Build brand image URL from Odoo custom.product.brand model
+    const brandImageUrl = brandOdooId
+      ? `${ODOO_BASE_URL}/web/image/custom.product.brand/${brandOdooId}/image_1920`
+      : null;
+
+    if (brandName && typeof brandName === "string") {
+      try {
+        const brandSlug = brandName.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").substring(0, 100);
+        const existingBrand = await pg.raw(
+          `SELECT id, logo_url FROM brand WHERE slug = ? AND deleted_at IS NULL LIMIT 1`,
+          [brandSlug]
+        );
+        let brandId: string;
+        if (existingBrand.rows?.length > 0) {
+          brandId = existingBrand.rows[0].id;
+          // Always update logo_url from Odoo if we have one (Odoo is source of truth for logos)
+          const existingLogo = existingBrand.rows[0].logo_url;
+          if (brandImageUrl && (existingLogo !== brandImageUrl)) {
+            await pg.raw(
+              `UPDATE brand SET logo_url = ?, updated_at = NOW() WHERE id = ?`,
+              [brandImageUrl, brandId]
+            );
+            console.log(`[Odoo Webhook] Updated brand logo: ${brandName} -> ${brandImageUrl}`);
+          }
+        } else {
+          brandId = `brand_${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+          await pg.raw(
+            `INSERT INTO brand (id, name, slug, is_active, is_special, logo_url, created_at, updated_at) VALUES (?, ?, ?, true, true, ?, NOW(), NOW())`,
+            [brandId, brandName, brandSlug, brandImageUrl]
+          );
+          console.log(`[Odoo Webhook] Created brand: ${brandName} (${brandId}) logo: ${brandImageUrl || "none"}`);
+        }
+        // Link product to brand
+        const existingLink = await pg.raw(
+          `SELECT id FROM product_brand WHERE product_id = ? AND brand_id = ? AND deleted_at IS NULL LIMIT 1`,
+          [prodId, brandId]
+        );
+        if (!existingLink.rows?.length) {
+          await pg.raw(
+            `INSERT INTO product_brand (id, product_id, brand_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())`,
+            [`pbr_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 8)}`, prodId, brandId]
+          );
+        }
+      } catch (brandErr: any) {
+        console.warn(`[Odoo Webhook] Brand sync failed for ${title}: ${brandErr.message}`);
+      }
+    }
+
     return { action: "updated", productId: prodId }
   }
 
@@ -828,6 +882,60 @@ async function upsertProduct(
     }
   } catch (spErr) {
     console.warn(`[Odoo Webhook] Shipping profile link failed for ${productId}: ${spErr}`)
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // BRAND SYNC
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Auto-create and link brand
+  const brandName = (Array.isArray(p.brand_id) ? p.brand_id[1] : null) || (Array.isArray(p.custom_brand_id) ? p.custom_brand_id[1] : null) || p.brand || p.x_studio_brand_1 || null;
+  const brandOdooId = (Array.isArray(p.custom_brand_id) ? p.custom_brand_id[0] : null) || (Array.isArray(p.brand_id) ? p.brand_id[0] : null) || null;
+  // Build brand image URL from Odoo custom.product.brand model
+  const brandImageUrl = brandOdooId
+    ? `${ODOO_BASE_URL}/web/image/custom.product.brand/${brandOdooId}/image_1920`
+    : null;
+
+  if (brandName && typeof brandName === "string") {
+    try {
+      const brandSlug = brandName.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").substring(0, 100);
+      const existingBrand = await pg.raw(
+        `SELECT id, logo_url FROM brand WHERE slug = ? AND deleted_at IS NULL LIMIT 1`,
+        [brandSlug]
+      );
+      let brandId: string;
+      if (existingBrand.rows?.length > 0) {
+        brandId = existingBrand.rows[0].id;
+        // Always update logo_url from Odoo if we have one (Odoo is source of truth for logos)
+        const existingLogo = existingBrand.rows[0].logo_url;
+        if (brandImageUrl && (existingLogo !== brandImageUrl)) {
+          await pg.raw(
+            `UPDATE brand SET logo_url = ?, updated_at = NOW() WHERE id = ?`,
+            [brandImageUrl, brandId]
+          );
+          console.log(`[Odoo Webhook] Updated brand logo: ${brandName} -> ${brandImageUrl}`);
+        }
+      } else {
+        brandId = `brand_${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+        await pg.raw(
+          `INSERT INTO brand (id, name, slug, is_active, is_special, logo_url, created_at, updated_at) VALUES (?, ?, ?, true, true, ?, NOW(), NOW())`,
+          [brandId, brandName, brandSlug, brandImageUrl]
+        );
+        console.log(`[Odoo Webhook] Created brand: ${brandName} (${brandId}) logo: ${brandImageUrl || "none"}`);
+      }
+      // Link product to brand
+      const existingLink = await pg.raw(
+        `SELECT id FROM product_brand WHERE product_id = ? AND brand_id = ? AND deleted_at IS NULL LIMIT 1`,
+        [productId, brandId]
+      );
+      if (!existingLink.rows?.length) {
+        await pg.raw(
+          `INSERT INTO product_brand (id, product_id, brand_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())`,
+          [`pbr_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 8)}`, productId, brandId]
+        );
+      }
+    } catch (brandErr: any) {
+      console.warn(`[Odoo Webhook] Brand sync failed for ${title}: ${brandErr.message}`);
+    }
   }
 
   return { action: "created", productId }
