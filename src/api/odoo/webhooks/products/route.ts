@@ -299,7 +299,7 @@ async function upsertProduct(
   const sku = p.default_code || `ODOO-${odooId}`
   const title = p.name || `Odoo Product ${odooId}`
   const KWD_FILS_DIVISOR = 1000
-  const rawPrice = p.retail_price || 0
+  const rawPrice = p.list_price || 0
   const price = Math.round(rawPrice * KWD_FILS_DIVISOR)
   const description = p.description_sale || p.description || ""
   const weight = p.weight ? String(p.weight) : null
@@ -386,7 +386,7 @@ async function upsertProduct(
     synced_at: new Date().toISOString(),
     // ── Pricing ──────────────────────────────────────────────────────────
     compare_price: p.compare_list_price || 0,
-    retail_price: p.retail_price || 0,
+    list_price: p.list_price || 0,
     // ── Brand ────────────────────────────────────────────────────────────
     brand: brand,
     brand_logo_url: brandLogoUrl,
