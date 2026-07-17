@@ -1033,13 +1033,16 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
 
     // SINGLE CREATE/UPDATE
     // Support both: { product: {...} } and flat root-level { id, name, ... }
-    const p: OdooProductPayload = body.product || body
-    if (!p?.odoo_id || !p?.name) {
-      return res.status(400).json({ message: "product.odoo_id and product.name are required" })
+    if (event_type === "product.updated" || event_type === "product.created") {
+      const p = body.product || body
+      console.log(`[Odoo Webhook] Full Payload for ${p.name || 'product'}:`, JSON.stringify(p, null, 2))
+      if (!p?.odoo_id || !p?.name) {
+        return res.status(400).json({ message: "product.odoo_id and product.name are required" })
+      }
+      const result = await upsertProduct(pg, p, salesChannelId, existingHandles, categoryByHandle)
+      console.log(`[Odoo Webhook] ${result.action}: ${p.name} -> ${result.productId}`)
+      return res.json({ status: "success", ...result, odoo_id: p.odoo_id, product_name: p.name })
     }
-    const result = await upsertProduct(pg, p, salesChannelId, existingHandles, categoryByHandle)
-    console.log(`[Odoo Webhook] ${result.action}: ${p.name} -> ${result.productId}`)
-    return res.json({ status: "success", ...result, odoo_id: p.odoo_id, product_name: p.name })
 
   } catch (error: any) {
     console.error(`[Odoo Webhook] Error:`, error.message)
