@@ -581,7 +581,7 @@ async function main() {
             sku,
             product.barcode ? String(product.barcode).substring(0, 100) : null,
             product.is_storable || false,
-            true, // ALWAYS allow backorder so users can buy items with 0 stock
+            product.allow_out_of_stock_order || false,
             JSON.stringify({
               odoo_product_id: product.id,
               odoo_price: product.list_price || 0,

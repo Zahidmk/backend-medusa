@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Client } = require('pg');
-const DB_URL = process.env.DATABASE_URL || 'postgres://postgres:marqa123@127.0.0.1:5433/marqa_souq_dev';
+const DB_URL = process.env.DATABASE_URL;
 
 async function updateVariants() {
   const db = new Client({ connectionString: DB_URL });
@@ -9,7 +9,7 @@ async function updateVariants() {
   try {
     const res = await db.query(`
       UPDATE product_variant 
-      SET allow_backorder = true;
+      SET allow_backorder = false;
     `);
     console.log(`Updated ${res.rowCount} variants to allow backorders`);
   } catch (error) {
