@@ -52,8 +52,7 @@ const CURRENCY_MULTIPLIER = 1000;
 
 // ─── ODOO FIELDS TO FETCH ─────────────────────────────────────────────────────
 const ODOO_FIELDS = [
-  'id', 'name', 'default_code', 'barcode', 'active', 'sale_ok',
-  'list_price', 'standard_price', 'currency_id',
+  'id', 'name', 'default_code', 'barcode', 'active', 'sale_ok', 'list_price', 'retail_price', 'compare_list_price', 'standard_price', 'currency_id',
   'description_sale', 'description_ecommerce', 'description',
   'brand_id', 'categ_id', 'x_studio_brand_1',
   'qty_available', 'is_storable', 'weight', 'allow_out_of_stock_order',
@@ -502,7 +501,7 @@ async function main() {
         // Brand name is now derived at the top of the loop
 
         // ── Price (KWD fils) ──
-        const priceKwd = Math.round((product.list_price || 0) * CURRENCY_MULTIPLIER);
+        const priceKwd = Math.round((product.retail_price || 0) * CURRENCY_MULTIPLIER);
 
         // ── Thumbnail URL (direct Odoo image endpoint — no download needed) ──
         const thumbnailUrl = `${ODOO_CONFIG.url}/web/image/product.template/${product.id}/image_1920`;
