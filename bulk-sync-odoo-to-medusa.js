@@ -558,9 +558,10 @@ async function main() {
             handle,
             brandName ? brandName.substring(0, 200) : null,
             description ? description.substring(0, 5000) : null,
-            status,
-            Math.max(0, product.weight || 0),
-            metadata,
+            thumbnailUrl,   // $6 = thumbnail ← was missing, causing "8 params but 9 required"
+            status,         // $7 = status
+            Math.max(0, product.weight || 0),  // $8 = weight
+            metadata,       // $9 = metadata
           ]);
 
           // ── Insert variant ──
