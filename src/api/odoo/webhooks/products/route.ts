@@ -13,7 +13,7 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
  */
 
 const WEBHOOK_SECRET = process.env.ODOO_WEBHOOK_SECRET || "marqa-odoo-webhook-2026"
-const ODOO_BASE_URL = (process.env.ODOO_URL || "https://oskarllc-new-31031096.dev.odoo.com").replace(/\/$/, "")
+const ODOO_BASE_URL = (process.env.ODOO_URL || "https://oskarllc-new-35045199.dev.odoo.com").replace(/\/$/, "")
 
 function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").replace(/(^-|-$)/g, "").substring(0, 100)

@@ -31,11 +31,11 @@ const { Client } = require('pg');
 
 // ─── ODOO CONFIG (production server credentials from .env) ──────────────────
 const ODOO_CONFIG = {
-  url:      process.env.ODOO_URL?.replace(/\/$/, '') || 'https://oskarllc-new-31031096.dev.odoo.com',
-  db:       process.env.ODOO_DB_NAME || 'oskarllc-new-31031096',
+  url:      process.env.ODOO_URL?.replace(/\/$/, '') || 'https://oskarllc-new-35045199.dev.odoo.com',
+  db:       process.env.ODOO_DB_NAME || 'oskarllc-new-35045199',
   username: process.env.ODOO_USERNAME || 'SYG',
   // Support both ODOO_API_KEY and ODOO_PASSWORD env var names
-  apiKey:   process.env.ODOO_API_KEY || process.env.ODOO_PASSWORD || '2a420f7cb6d0c1c8f73368131f025f638c30704e',
+  apiKey:   process.env.ODOO_API_KEY || process.env.ODOO_PASSWORD || '123',
 };
 
 // ─── DB CONFIG ────────────────────────────────────────────────────────────────
