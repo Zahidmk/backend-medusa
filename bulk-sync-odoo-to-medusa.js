@@ -404,8 +404,73 @@ async function main() {
             }
           }
 
+          // ── Inventory stock level update on UPDATE ──
+          try {
+            const stockQty = Math.max(0, Math.round(product.qty_available || 0));
+            const sku = product.default_code || `ODOO-${product.id}`;
+
+            // Get the variant for this product
+            const { rows: varRows } = await db.query(
+              `SELECT pv.id as vid FROM product_variant pv WHERE pv.product_id = $1 AND pv.deleted_at IS NULL LIMIT 1`,
+              [existingMedusaId]
+            );
+
+            if (varRows.length > 0) {
+              const vid = varRows[0].vid;
+
+              // Get or create inventory_item
+              let { rows: invRows } = await db.query(
+                `SELECT id FROM inventory_item WHERE sku = $1 LIMIT 1`,
+                [sku]
+              );
+
+              let invItemId;
+              if (invRows.length === 0) {
+                invItemId = genId('iitem');
+                await db.query(
+                  `INSERT INTO inventory_item (id, sku, title, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW()) ON CONFLICT DO NOTHING`,
+                  [invItemId, sku, product.name.substring(0, 500)]
+                );
+                const { rows: reRead } = await db.query(`SELECT id FROM inventory_item WHERE sku = $1 LIMIT 1`, [sku]);
+                invItemId = reRead[0]?.id || invItemId;
+              } else {
+                invItemId = invRows[0].id;
+              }
+
+              // Ensure variant is linked to inventory item
+              await db.query(
+                `INSERT INTO product_variant_inventory_item (id, variant_id, inventory_item_id, required_quantity, created_at, updated_at)
+                 VALUES ($1, $2, $3, 1, NOW(), NOW()) ON CONFLICT DO NOTHING`,
+                [genId('pvitem'), vid, invItemId]
+              );
+
+              // Update or create inventory level
+              if (stockLocationId) {
+                const { rows: lvlRows } = await db.query(
+                  `SELECT id FROM inventory_level WHERE inventory_item_id = $1 AND location_id = $2 LIMIT 1`,
+                  [invItemId, stockLocationId]
+                );
+                if (lvlRows.length > 0) {
+                  await db.query(
+                    `UPDATE inventory_level SET stocked_quantity = $1, updated_at = NOW() WHERE id = $2`,
+                    [stockQty, lvlRows[0].id]
+                  );
+                } else if (stockQty > 0) {
+                  await db.query(
+                    `INSERT INTO inventory_level (id, inventory_item_id, location_id, stocked_quantity, reserved_quantity, incoming_quantity, created_at, updated_at)
+                     VALUES ($1, $2, $3, $4, 0, 0, NOW(), NOW()) ON CONFLICT DO NOTHING`,
+                    [genId('iloc'), invItemId, stockLocationId, stockQty]
+                  );
+                }
+              }
+            }
+          } catch (invErr) {
+            // Non-fatal
+          }
+
           totalUpdated++;
           continue;
+
         }
 
         // ── Build handle (unique) ──
