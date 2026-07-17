@@ -506,18 +506,6 @@ const BrandFormDrawer = ({
   // The parent uses key={brand?.id ?? "new"} to force remount when brand changes.
   const [name, setName] = useState(() => brand?.name || "")
   const [description, setDescription] = useState(() => brand?.description || "")
-  const [logoFile, setLogoFile] = useState<File | null>(null)
-  // Logo preview: relative paths like /brands/... must be prefixed with the storefront domain
-  // because the admin lives on a different subdomain.
-  const toPreviewUrl = (url: string | undefined) => {
-    if (!url) return ""
-    if (url.includes("oskarllc-new")) return ""
-    if (url.startsWith("/static/")) return `https://admin.markasouqs.com${url}`
-    if (url.startsWith("/brands/")) return `https://website.markasouqs.com${url}`
-    if (url.startsWith("/")) return `https://website.markasouqs.com${url}`
-    return url
-  }
-  const [logoPreview, setLogoPreview] = useState(() => toPreviewUrl(brand?.logo_url))
   const [isActive, setIsActive] = useState(() => brand?.is_active ?? true)
   const [isSpecial, setIsSpecial] = useState(() => brand?.is_special ?? false)
   const [isLoading, setIsLoading] = useState(false)
@@ -527,20 +515,9 @@ const BrandFormDrawer = ({
   useEffect(() => {
     setName(brand?.name || "")
     setDescription(brand?.description || "")
-    setLogoFile(null)
-    setLogoPreview(toPreviewUrl(brand?.logo_url))
     setIsActive(brand?.is_active ?? true)
     setIsSpecial(brand?.is_special ?? false)
   }, [brand])
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setLogoFile(file)
-      const reader = new FileReader()
-      reader.onloadend = () => setLogoPreview(reader.result as string)
-      reader.readAsDataURL(file)
-    }
-  }
 
   const handleSubmit = async () => {
     if (!name.trim()) {
@@ -550,26 +527,8 @@ const BrandFormDrawer = ({
     setIsLoading(true)
     setSaveError(null)
     try {
+      // Retain the existing logo_url if any (managed by Odoo)
       let logoUrl = brand?.logo_url || ""
-      if (logoFile) {
-        const formData = new FormData()
-        formData.append("files", logoFile)
-        const uploadRes = await fetch("/admin/uploads", {
-          method: "POST",
-          body: formData,
-          credentials: "include",
-        })
-        const uploadData = await uploadRes.json()
-        const resolved =
-          uploadData?.url ||
-          uploadData?.uploads?.[0]?.url ||
-          null
-        if (!uploadRes.ok || !resolved) {
-          console.error("Upload failed:", uploadData)
-          throw new Error(uploadData?.message || "Logo upload failed — check backend logs")
-        }
-        logoUrl = resolved
-      }
       onSave({ id: brand?.id, name: name.trim(), description, logo_url: logoUrl, is_active: isActive, is_special: isSpecial })
     } catch (error: any) {
       console.error("Error saving brand:", error)
@@ -601,33 +560,6 @@ const BrandFormDrawer = ({
 
           {/* Content */}
           <div className="p-6 space-y-5 max-h-[60vh] overflow-y-auto">
-            {/* Logo */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Brand Logo</label>
-              <div className="flex justify-center">
-                <div className="w-48 h-24 rounded-2xl bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center overflow-hidden border-2 border-dashed border-gray-300 relative cursor-pointer group hover:border-violet-400 transition-colors">
-                  {logoPreview ? (
-                    <img src={logoPreview} alt="Logo preview" className="max-w-[85%] max-h-[85%] object-contain" />
-                  ) : (
-                    <div className="text-center p-2">
-                      <TagSolid className="w-8 h-8 text-gray-400 mx-auto mb-1" />
-                      <span className="text-xs text-gray-500 block">Click to upload logo</span>
-                    </div>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
-                  />
-                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl pointer-events-none">
-                    <span className="text-white text-sm font-medium bg-white/20 px-3 py-1 rounded-full">
-                      {logoPreview ? "Change" : "Upload"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
 
             {/* Name */}
             <div className="space-y-2">
