@@ -912,7 +912,7 @@ class OdooSyncService {
         origin_country: product.country_of_origin ? product.country_of_origin[1] : null,
         origin_country_code: product.country_of_origin ? product.country_of_origin[0] : null,
         lead_time_days: product.sale_delay || 0,
-        allow_backorder: product.allow_out_of_stock_order || false,
+        allow_backorder: true, // Always allow backorder so items with 0 stock can be bought
         oos_message: product.out_of_stock_message || null,
         show_stock_qty: product.show_availability || false,
         stock_threshold: product.available_threshold || 0,
