@@ -448,10 +448,10 @@ async function upsertProduct(
       `SELECT pv.id as vid, pvps.price_set_id as psid FROM product_variant pv LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id WHERE pv.product_id = ? AND pv.deleted_at IS NULL LIMIT 1`,
       [prodId]
     )
-    // Ensure allow_backorder=false so out of stock items cannot be bought
+    // Ensure allow_backorder=true so frontend acts as the sole gatekeeper
     if (varRes.rows?.length > 0) {
       await pg.raw(
-        `UPDATE product_variant SET allow_backorder = false, updated_at = NOW() WHERE id = ?`,
+        `UPDATE product_variant SET allow_backorder = true, updated_at = NOW() WHERE id = ?`,
         [varRes.rows[0].vid]
       )
     }

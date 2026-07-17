@@ -9,9 +9,9 @@ async function updateVariants() {
   try {
     const res = await db.query(`
       UPDATE product_variant 
-      SET allow_backorder = false;
+      SET allow_backorder = true;
     `);
-    console.log(`Updated ${res.rowCount} variants to allow backorders`);
+    console.log(`Updated ${res.rowCount} variants to TRUE (Backend now bypasses stock check)`);
   } catch (error) {
     console.error('Error:', error.message);
   } finally {
