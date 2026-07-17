@@ -122,12 +122,24 @@ let odooUid = null;
 
 async function authenticate() {
   console.log('🔐 Authenticating with Odoo...');
+  console.log(`   URL:      ${ODOO_CONFIG.url}`);
+  console.log(`   DB:       ${ODOO_CONFIG.db}`);
+  console.log(`   Username: ${ODOO_CONFIG.username}`);
+  console.log(`   API Key:  ${ODOO_CONFIG.apiKey?.substring(0, 8)}...`);
+
   const result = await jsonRpc('/jsonrpc', {
     service: 'common',
     method: 'authenticate',
     args: [ODOO_CONFIG.db, ODOO_CONFIG.username, ODOO_CONFIG.apiKey, {}],
   });
+
   if (!result || typeof result !== 'number' || result <= 0) {
+    console.error(`\n❌ Authentication returned: ${JSON.stringify(result)}`);
+    console.error('   Possible causes:');
+    console.error('   1. API key expired/revoked → Go to Odoo > Settings > Technical > API Keys');
+    console.error('   2. Wrong ODOO_USERNAME — current value: ' + ODOO_CONFIG.username);
+    console.error('   3. Wrong ODOO_DB_NAME  — current value: ' + ODOO_CONFIG.db);
+    console.error('   4. Wrong ODOO_URL      — current value: ' + ODOO_CONFIG.url);
     throw new Error(`Odoo authentication failed: ${JSON.stringify(result)}`);
   }
   odooUid = result;
