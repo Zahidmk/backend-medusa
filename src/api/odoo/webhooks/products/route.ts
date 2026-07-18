@@ -212,7 +212,7 @@ interface OdooProductPayload {
   image_1920?: string
   images?: string[]
   // ── Stock ─────────────────────────────────────────────────────────────────
-  qty_available?: number
+  free_qty?: number
   virtual_available?: number         // forecasted qty (Odoo: virtual_available)
   is_published?: boolean
   // ── eCommerce description (Odoo field: description_ecommerce) ─────────────
@@ -383,8 +383,8 @@ async function upsertProduct(
     odoo_barcode: barcode,
     odoo_category: category,
     odoo_brand: brand,
-    odoo_qty: p.qty_available || 0,
-    odoo_stock: p.qty_available || 0,
+    odoo_qty: p.free_qty || 0,
+    odoo_stock: p.free_qty || 0,
     synced_at: new Date().toISOString(),
     // ── Pricing ──────────────────────────────────────────────────────────
     compare_price: p.compare_list_price || 0,
@@ -546,7 +546,7 @@ async function upsertProduct(
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // INVENTORY SYNC
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const qty = p.qty_available || 0
+    const qty = p.free_qty || 0
     if (varRes.rows?.length > 0) {
       const vid = varRes.rows[0].vid
       try {
@@ -839,7 +839,7 @@ async function upsertProduct(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // INVENTORY SYNC
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const qty = p.qty_available || 0
+  const qty = p.free_qty || 0
   try {
     // Create inventory_item
     const invItemId = genId("iitem")

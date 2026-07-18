@@ -38,6 +38,7 @@
     "sync:images": "medusa exec ./src/scripts/sync-odoo-images.ts",
     "sync:orders": "medusa exec ./src/scripts/sync-odoo-orders.ts",
     "sync:customers": "medusa exec ./src/scripts/sync-odoo-customers.ts",
+    "sync:categories": "medusa exec ./src/scripts/sync-odoo-categories.ts",
     "sync:all": "yarn sync:odoo && yarn sync:images && yarn sync:customers",
     "test:integration:http": "TEST_TYPE=integration:http NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
     "test:integration:modules": "TEST_TYPE=integration:modules NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
