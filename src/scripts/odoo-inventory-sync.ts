@@ -104,6 +104,10 @@ export default async function odooInventorySync({ container }: ExecArgs) {
     })
   }
   console.log(`📊 Built inventory map with ${odooInventory.size} SKUs`)
+  console.log(
+      "First Odoo SKU:",
+      [...odooInventory.keys()].slice(0, 20)
+  )
   
   // Get services from container
   const productModuleService = container.resolve("product")
@@ -112,21 +116,63 @@ export default async function odooInventorySync({ container }: ExecArgs) {
   // Get existing products with variants
   console.log("\n3️⃣ Fetching MedusaJS products...")
   
-  const existingProducts = await productModuleService.listProducts({}, {
-    select: ["id", "handle", "metadata"],
-    relations: ["variants"],
-    take: 1000
-  })
+  let existingProducts: any[] = []
+  let skip = 0
+  
+  while (true) {
+    const batch = await productModuleService.listProducts(
+      {},
+      {
+        select: ["id", "handle", "metadata"],
+        relations: ["variants"],
+        take: 1000,
+        skip,
+      }
+    )
+  
+    existingProducts.push(...batch)
+  
+    if (batch.length < 1000) {
+      break
+    }
+  
+    skip += 1000
+  }
   
   console.log(`📊 Found ${existingProducts.length} products in MedusaJS`)
+  console.log(
+      "First Medusa SKU:",
+      existingProducts
+        .flatMap((p:any)=>p.variants || [])
+        .map((v:any)=>v.sku)
+        .slice(0,20)
+  )
   
   // Get inventory items
   console.log("\n4️⃣ Fetching inventory items...")
   
   let inventoryItems: any[] = []
   try {
-    const items = await inventoryModuleService.listInventoryItems({}, { take: 2000 })
-    inventoryItems = items
+    let skipItems = 0
+
+    while (true) {
+        const batch = await inventoryModuleService.listInventoryItems(
+            {},
+            {
+                take: 1000,
+                skip: skipItems,
+            }
+        )
+
+        inventoryItems.push(...batch)
+
+        if (batch.length < 1000) {
+            break
+        }
+
+        skipItems += 1000
+    }
+
     console.log(`📊 Found ${inventoryItems.length} inventory items`)
   } catch (error: any) {
     console.log(`⚠️ Could not list inventory items: ${error.message}`)
@@ -151,6 +197,16 @@ export default async function odooInventorySync({ container }: ExecArgs) {
   for (const product of existingProducts) {
     for (const variant of product.variants || []) {
       const sku = variant.sku
+
+      if (updatedCount === 0 && skippedCount < 30) {
+          console.log(
+              "Variant:",
+              sku,
+              "Exists in Odoo:",
+              odooInventory.has(sku)
+          )
+      }
+
       if (!sku) continue
       
       const odooStock = odooInventory.get(sku)
