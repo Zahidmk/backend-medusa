@@ -15,6 +15,7 @@ interface OdooProduct {
   id: number
   default_code: string | false
   free_qty?: number
+  qty_available?: number
   virtual_available: number
   name: string
 }
@@ -78,7 +79,7 @@ export default async function odooInventorySync({ container }: ExecArgs) {
           "search_read",
           [[["active", "=", true]]],
           {
-            fields: ["id", "default_code", "free_qty", "virtual_available", "name"],
+            fields: ["id", "default_code", "free_qty", "qty_available", "virtual_available", "name"],
             limit: 10000
           }
         ]
@@ -88,6 +89,18 @@ export default async function odooInventorySync({ container }: ExecArgs) {
     
     odooProducts = productsResponse.data.result || []
     console.log(`✅ Found ${odooProducts.length} products in Odoo`)
+    
+    // Debug output to verify what Odoo is returning
+    console.log("\\n🔍 First 20 Odoo Products Quantities:");
+    for (const p of odooProducts.slice(0, 20)) {
+      console.log(
+        p.default_code,
+        "| free_qty =", p.free_qty,
+        "| qty_available =", p.qty_available,
+        "| virtual_available =", p.virtual_available
+      )
+    }
+    console.log("");
   } catch (error: any) {
     console.error("❌ Failed to fetch inventory:", error.message)
     return

@@ -18,7 +18,7 @@ import axios from "axios"
  */
 
 const PAGE_SIZE = 200
-const CURRENCY = "aed"
+const CURRENCY = process.env.DEFAULT_CURRENCY || "kwd"
 
 function genId(prefix: string): string {
   const c = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
