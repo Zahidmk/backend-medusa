@@ -50,12 +50,7 @@ const DEFAULT_CURRENCY_DECIMALS = 3    // OMR/KWD have 3 decimal places
 // ─────────────────────────────────────────────────
 
 function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .substring(0, 100)
+  return text.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/(^-|-$)/g, "").substring(0, 100)
 }
 
 function toSmallestUnit(amount: number): number {
