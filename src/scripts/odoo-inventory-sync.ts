@@ -79,7 +79,7 @@ export default async function odooInventorySync({ container }: ExecArgs) {
           [[["active", "=", true]]],
           {
             fields: ["id", "default_code", "qty_available", "virtual_available", "name"],
-            limit: 1000
+            limit: 10000
           }
         ]
       },
