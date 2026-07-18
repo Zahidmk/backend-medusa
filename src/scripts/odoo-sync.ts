@@ -222,7 +222,10 @@ export default async function odooSync({ container }: ExecArgs) {
         )
         if (vr.rows?.length > 0 && p.list_price > 0) {
           const rawAmt = JSON.stringify({ value: String(p.list_price), precision: 20 })
-          await pg.raw(`UPDATE price SET amount=?, raw_amount=?, updated_at=NOW() WHERE price_set_id=? AND deleted_at IS NULL`, [p.list_price, rawAmt, vr.rows[0].price_set_id])
+          await pg.raw(
+            `UPDATE price SET amount=?, currency_code=?, raw_amount=?, updated_at=NOW() WHERE price_set_id=? AND deleted_at IS NULL`, 
+            [p.list_price, CURRENCY, rawAmt, vr.rows[0].price_set_id]
+          )
         }
         // Assign category from Odoo category path
         const catHandle = odooCategoryToHandle(category)
