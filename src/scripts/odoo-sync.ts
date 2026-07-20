@@ -132,14 +132,16 @@ export default async function odooSync({ container }: ExecArgs) {
   console.log(`\n3. Fetching products (page size: ${PAGE_SIZE})...`)
   const fields = [
     "id", "name", "default_code", "barcode",
-    "list_price", "compare_list_price",
+    "list_price", "compare_list_price", 
+    "retail_price", "x_retail_price", "x_compare_list_price", // Check common custom retail price fields
     "description_sale", "categ_id", "brand_id", "x_studio_brand_1", "custom_brand_id",
     "weight", "qty_available", "is_published", "website_url",
   ]
 
   interface OdooProduct {
     id: number; name: string; default_code: string | false; barcode: string | false
-    list_price: number; compare_list_price: number
+    list_price: number; compare_list_price?: number | false | null
+    retail_price?: number | false | null; x_retail_price?: number | false | null; x_compare_list_price?: number | false | null
     description_sale: string | false; categ_id: [number, string] | false
     brand_id: [number, string] | false; x_studio_brand_1: string | false; custom_brand_id?: [number, string] | false
     weight: number; qty_available: number; is_published: boolean
@@ -158,6 +160,20 @@ export default async function odooSync({ container }: ExecArgs) {
     if (offset < totalCount) process.stdout.write(`  Fetched ${allProducts.length}/${totalCount}...\r`)
   }
   console.log(`Fetched ${allProducts.length} products from Odoo`)
+
+  if (allProducts.length > 0) {
+    console.log("\n--- DEBUG: FIRST PRODUCT FROM ODOO ---")
+    const sample = allProducts[0]
+    console.log(JSON.stringify({
+      sku: sample.default_code,
+      list_price: sample.list_price,
+      compare_list_price: sample.compare_list_price,
+      retail_price: sample.retail_price,
+      x_retail_price: sample.x_retail_price,
+      x_compare_list_price: sample.x_compare_list_price
+    }, null, 2))
+    console.log("--------------------------------------\n")
+  }
 
   // 4. Prepare MedusaJS DB
   const pg = container.resolve(ContainerRegistrationKeys.PG_CONNECTION)
