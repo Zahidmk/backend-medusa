@@ -112,6 +112,17 @@ export default async function odooInventorySync({ container }: ExecArgs) {
     odooProducts = productsResponse.data.result || []
     console.log(`✅ Found ${odooProducts.length} products in Odoo`)
     
+    // Check specific problematic SKU
+    const targetSku = "BMOHMP17X25PCSPEG"
+    const problematicProduct = odooProducts.find(p => p.default_code === targetSku)
+    if (problematicProduct) {
+      console.log(`\n🚨 FOUND TARGET SKU IN ODOO: ${targetSku} 🚨`)
+      console.log(JSON.stringify(problematicProduct, null, 2))
+      console.log("------------------------------------------------\n")
+    } else {
+      console.log(`\n🚨 TARGET SKU NOT FOUND IN ODOO: ${targetSku} 🚨\n`)
+    }
+    
     // Debug output to verify what Odoo is returning
     console.log("\\n🔍 First 20 Odoo Products Quantities:");
     for (const p of odooProducts.slice(0, 20)) {
