@@ -129,13 +129,14 @@ export default async function odooInventorySync({ container }: ExecArgs) {
   }
   
   // Build SKU to inventory map
-  const odooInventory = new Map<string, { qty: number, odooId: number, name: string }>()
+  const odooInventory = new Map<string, { qty: number, odooId: number, name: string, fullProduct: OdooProduct }>()
   for (const product of odooProducts) {
     const sku = product.default_code || `ODOO-${product.id}`
     odooInventory.set(sku, {
-      qty: Math.max(0, Math.floor(product.free_qty || 0)),
+      qty: Math.max(0, Math.floor(product.free_qty || product.qty_available || 0)),
       odooId: product.id,
-      name: product.name
+      name: product.name,
+      fullProduct: product
     })
   }
   console.log(`📊 Built inventory map with ${odooInventory.size} SKUs`)
@@ -298,20 +299,21 @@ export default async function odooInventorySync({ container }: ExecArgs) {
             
             if (location) {
               const qty = Math.max(0, odooStock.qty);
-
-              // Update or create inventory level
+              
               const levels = await inventoryModuleService.listInventoryLevels({
                 inventory_item_id: inventoryItem.id,
-                location_id: location.id
+                location_id: location.id,
               })
               
-              if (levels.length > 0) {
+              if (levels && levels.length > 0) {
                 // Update existing level
                 await inventoryModuleService.updateInventoryLevels({
                   inventory_item_id: inventoryItem.id,
                   location_id: location.id,
-                  stocked_quantity: qty
+                  stocked_quantity: qty,
                 })
+                updatedCount++
+                console.log(`  ✅ Updated stock for ${sku} -> ${qty}`)
               } else {
                 // Create new level
                 await inventoryModuleService.createInventoryLevels({
@@ -319,9 +321,26 @@ export default async function odooInventorySync({ container }: ExecArgs) {
                   location_id: location.id,
                   stocked_quantity: qty
                 })
+                updatedCount++
+                console.log(`  ➕ Set initial stock for ${sku} -> ${qty}`)
               }
 
-              // CRITICAL FIX: Link the variant to the inventory item
+              // Update product metadata with exact numbers for debugging
+              try {
+                await productModuleService.updateProducts(product.id, {
+                  metadata: {
+                    ...(product.metadata || {}),
+                    free_qty: odooStock.fullProduct.free_qty ?? null,
+                    qty_available: odooStock.fullProduct.qty_available ?? null,
+                    forecasted_qty: odooStock.fullProduct.virtual_available ?? null,
+                    inventory_synced_at: new Date().toISOString()
+                  }
+                })
+              } catch (metaErr) {
+                // Ignore metadata update errors
+              }
+
+            } else {
               const remoteLink = container.resolve("remoteLink" as any)
               
               // This is safe even if it's already linked, but we can wrap it in try/catch just in case
@@ -341,7 +360,7 @@ export default async function odooInventorySync({ container }: ExecArgs) {
               
               updatedCount++
               if (updatedCount <= 20) {
-                console.log(`  ✅ ${sku}: ${qty} units (${odooStock.name})`)
+                console.log(`  ✅ ${sku}: ${odooStock.qty} units (${odooStock.name})`)
               }
             }
           } catch (levelError: any) {
