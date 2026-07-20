@@ -75,7 +75,18 @@ export default async function odooInventorySync({ container }: ExecArgs) {
     if (pid) {
       const quantRes = await axios.post(`${odooUrl}/jsonrpc`, {
         jsonrpc: "2.0", method: "call",
-        params: { service: "object", method: "execute_kw", args: [odooDb, uid, odooPassword, "stock.quant", "search_read", [[["product_id", "=", pid]]], { limit: 10 }] },
+        params: { 
+          service: "object", 
+          method: "execute_kw", 
+          args: [
+            odooDb, uid, odooPassword, "stock.quant", "search_read", 
+            [[["product_id", "=", pid]]], 
+            { 
+              fields: ["quantity", "reserved_quantity", "location_id"],
+              limit: 10 
+            }
+          ] 
+        },
         id: 100
       })
       console.log("🚨 STOCK.QUANT RAW RESULT 🚨")
