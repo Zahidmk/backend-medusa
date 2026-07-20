@@ -20,7 +20,7 @@ export default async function setupStore({ container }: ExecArgs) {
   const stockLocationService = container.resolve(Modules.STOCK_LOCATION)
   const fulfillmentModuleService = container.resolve(Modules.FULFILLMENT)
   const pricingService = container.resolve(Modules.PRICING)
-  const linkService = container.resolve(Modules.LINK)
+  const linkService: any = container.resolve(Modules.LINK)
 
   try {
     // 1. Sales Channel

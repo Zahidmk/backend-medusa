@@ -9,7 +9,7 @@ export default async function setupKuwaitShipping({ container }: ExecArgs) {
   const fulfillmentModuleService = container.resolve("fulfillment")
   const salesChannelService = container.resolve("sales_channel")
   const pricingService = container.resolve("pricing")
-  const linkService = container.resolve("link")
+  const linkService: any = container.resolve("link")
   
   try {
     // 1. Kuwait Stock Location
