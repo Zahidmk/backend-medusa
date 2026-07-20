@@ -1,5 +1,5 @@
 import { ExecArgs } from "@medusajs/framework/types"
-import { Modules } from "@medusajs/framework/utils"
+import { Modules, ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { createApiKeysWorkflow, linkSalesChannelsToApiKeyWorkflow } from "@medusajs/medusa/core-flows"
 import fs from "fs"
 import path from "path"
@@ -20,7 +20,7 @@ export default async function setupStore({ container }: ExecArgs) {
   const stockLocationService = container.resolve(Modules.STOCK_LOCATION)
   const fulfillmentModuleService = container.resolve(Modules.FULFILLMENT)
   const pricingService = container.resolve(Modules.PRICING)
-  const linkService: any = container.resolve(Modules.LINK)
+  const remoteLink = container.resolve(ContainerRegistrationKeys.REMOTE_LINK)
 
   try {
     // 1. Sales Channel
@@ -154,11 +154,11 @@ export default async function setupStore({ container }: ExecArgs) {
     
     const linkPromises = [
       // Link Warehouse ↔ Sales Channel
-      linkService.create({ sales_channel_stock_location: { sales_channel_id: defaultChannel.id, stock_location_id: kuwaitLocation.id } }).catch(() => {}),
+      remoteLink.create({ sales_channel_stock_location: { sales_channel_id: defaultChannel.id, stock_location_id: kuwaitLocation.id } }).catch(() => {}),
       // Link Fulfillment Set ↔ Warehouse
-      linkService.create({ stock_location_fulfillment_set: { stock_location_id: kuwaitLocation.id, fulfillment_set_id: kuwaitFulfillmentSet.id } }).catch(() => {}),
+      remoteLink.create({ stock_location_fulfillment_set: { stock_location_id: kuwaitLocation.id, fulfillment_set_id: kuwaitFulfillmentSet.id } }).catch(() => {}),
       // Link Shipping Option ↔ Price Set
-      linkService.create({ shipping_option_price_set: { shipping_option_id: shippingOption.id, price_set_id: priceSet.id } }).catch(() => {})
+      remoteLink.create({ shipping_option_price_set: { shipping_option_id: shippingOption.id, price_set_id: priceSet.id } }).catch(() => {})
     ]
     await Promise.all(linkPromises)
     console.log("  ✅ Links established (ignored duplicates)")

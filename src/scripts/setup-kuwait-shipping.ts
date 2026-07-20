@@ -1,4 +1,5 @@
 import { ExecArgs } from "@medusajs/framework/types"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 
 export default async function setupKuwaitShipping({ container }: ExecArgs) {
   console.log("\n🚚 Setting up Full Kuwait Shipping...")
@@ -9,7 +10,7 @@ export default async function setupKuwaitShipping({ container }: ExecArgs) {
   const fulfillmentModuleService = container.resolve("fulfillment")
   const salesChannelService = container.resolve("sales_channel")
   const pricingService = container.resolve("pricing")
-  const linkService: any = container.resolve("link")
+  const remoteLink = container.resolve(ContainerRegistrationKeys.REMOTE_LINK)
   
   try {
     // 1. Kuwait Stock Location
@@ -35,7 +36,7 @@ export default async function setupKuwaitShipping({ container }: ExecArgs) {
     
     if (defaultChannel) {
       try {
-        await linkService.create({
+        await remoteLink.create({
           sales_channel_stock_location: {
             sales_channel_id: defaultChannel.id,
             stock_location_id: kuwaitLocation.id
@@ -78,7 +79,7 @@ export default async function setupKuwaitShipping({ container }: ExecArgs) {
     }
 
     try {
-      await linkService.create({
+      await remoteLink.create({
         stock_location_fulfillment_set: {
           stock_location_id: kuwaitLocation.id,
           fulfillment_set_id: kuwaitFulfillmentSet.id
@@ -134,7 +135,7 @@ export default async function setupKuwaitShipping({ container }: ExecArgs) {
     console.log(`  ✅ Created Free Shipping Price Set: ${priceSet.id}`)
 
     try {
-      await linkService.create({
+      await remoteLink.create({
         shipping_option_price_set: {
           shipping_option_id: shippingOption.id,
           price_set_id: priceSet.id
