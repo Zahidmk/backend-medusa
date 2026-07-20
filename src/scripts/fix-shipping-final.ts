@@ -42,6 +42,7 @@ export default async function fixShippingFinal({ container }: ExecArgs) {
 
       // 3. Remove restrictive rules that block checkout
       const rules = await fulfillmentModuleService.listShippingOptionRules({
+        // @ts-ignore - Ignore TS error on older script
         shipping_option_id: option.id
       })
       

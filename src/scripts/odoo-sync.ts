@@ -150,14 +150,15 @@ export default async function odooSync({ container }: ExecArgs) {
   console.log(`\n4. Fetching products (page size: ${PAGE_SIZE})...`)
   const fields = [
     "id", "name", "default_code", "barcode",
-    "list_price", "compare_list_price",
+    "list_price", "retail_price",
     "description_sale", "categ_id", "brand_id", "x_studio_brand_1", "custom_brand_id",
     "weight", "qty_available", "is_published", "website_url",
   ]
 
   interface OdooProduct {
     id: number; name: string; default_code: string | false; barcode: string | false
-    list_price: number; compare_list_price?: number | false | null
+    list_price: number;
+    compare_list_price?: number | false | null;
     retail_price?: number | false | null; x_retail_price?: number | false | null; x_compare_list_price?: number | false | null
     description_sale: string | false; categ_id: [number, string] | false
     brand_id: [number, string] | false; x_studio_brand_1: string | false; custom_brand_id?: [number, string] | false
@@ -246,7 +247,7 @@ export default async function odooSync({ container }: ExecArgs) {
         odoo_id: p.id, odoo_sku: sku, odoo_barcode: p.barcode || null,
         odoo_category: category, odoo_brand: brand,
         odoo_qty: p.qty_available || 0, 
-        retail_price: p.compare_list_price || null,
+        retail_price: p.retail_price || null,
         list_price: p.list_price || null,
         synced_at: new Date().toISOString(),
       })
