@@ -63,6 +63,31 @@ export default async function odooInventorySync({ container }: ExecArgs) {
   // Fetch inventory from Odoo
   console.log("\n2️⃣ Fetching inventory from Odoo...")
   
+  // Debug stock.quant directly
+  console.log("\n🔍 Checking stock.quant directly for SKU BMOHMP17X25PCSPEG...")
+  try {
+    const prodRes = await axios.post(`${odooUrl}/jsonrpc`, {
+      jsonrpc: "2.0", method: "call",
+      params: { service: "object", method: "execute_kw", args: [odooDb, uid, odooPassword, "product.product", "search_read", [[["default_code", "=", "BMOHMP17X25PCSPEG"]]], { fields: ["id"], limit: 1 }] },
+      id: 99
+    })
+    const pid = prodRes.data.result?.[0]?.id
+    if (pid) {
+      const quantRes = await axios.post(`${odooUrl}/jsonrpc`, {
+        jsonrpc: "2.0", method: "call",
+        params: { service: "object", method: "execute_kw", args: [odooDb, uid, odooPassword, "stock.quant", "search_read", [[["product_id", "=", pid]]], { limit: 10 }] },
+        id: 100
+      })
+      console.log("🚨 STOCK.QUANT RAW RESULT 🚨")
+      console.log(JSON.stringify(quantRes.data.result, null, 2))
+      console.log("----------------------------\n")
+    } else {
+       console.log("Could not find product BMOHMP17X25PCSPEG in Odoo to check stock.quant")
+    }
+  } catch (e: any) {
+    console.log("Could not check stock.quant:", e.message)
+  }
+  
   let odooProducts: OdooProduct[] = []
   
   // Discover available quantity fields safely
