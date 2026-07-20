@@ -204,7 +204,10 @@ export default async function odooSync({ container }: ExecArgs) {
       const metadata = JSON.stringify({
         odoo_id: p.id, odoo_sku: sku, odoo_barcode: p.barcode || null,
         odoo_category: category, odoo_brand: brand,
-        odoo_qty: p.qty_available || 0, synced_at: new Date().toISOString(),
+        odoo_qty: p.qty_available || 0, 
+        retail_price: p.compare_list_price || null,
+        list_price: p.list_price || null,
+        synced_at: new Date().toISOString(),
       })
 
       const imageUrl = p.website_url ? `${odooUrl}/web/image/product.template/${p.id}/image_1920` : null
