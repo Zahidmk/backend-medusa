@@ -263,9 +263,9 @@ export default async function odooSync({ container }: ExecArgs) {
 
         // Assign Shipping Profile
         if (shippingProfileId) {
-          const spCheck = await pg.raw(`SELECT id FROM product_shipping_profile WHERE product_id = ? AND profile_id = ? LIMIT 1`, [existingProdId, shippingProfileId])
+          const spCheck = await pg.raw(`SELECT id FROM product_shipping_profile WHERE product_id = ? AND shipping_profile_id = ? LIMIT 1`, [existingProdId, shippingProfileId])
           if (spCheck.rows?.length === 0) {
-            await pg.raw(`INSERT INTO product_shipping_profile (id, product_id, profile_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())`, [genId("psp"), existingProdId, shippingProfileId])
+            await pg.raw(`INSERT INTO product_shipping_profile (id, product_id, shipping_profile_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())`, [genId("psp"), existingProdId, shippingProfileId])
           }
         }
         // Assign category from Odoo category path
@@ -298,7 +298,7 @@ export default async function odooSync({ container }: ExecArgs) {
 
         // Assign Shipping Profile
         if (shippingProfileId) {
-          await pg.raw(`INSERT INTO product_shipping_profile (id, product_id, profile_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())`, [genId("psp"), productId, shippingProfileId])
+          await pg.raw(`INSERT INTO product_shipping_profile (id, product_id, shipping_profile_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())`, [genId("psp"), productId, shippingProfileId])
         }
 
         // Create Inventory Item and Level
