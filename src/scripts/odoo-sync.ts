@@ -177,8 +177,16 @@ export default async function odooSync({ container }: ExecArgs) {
   const scRes = await pg.raw(`SELECT id FROM sales_channel WHERE deleted_at IS NULL LIMIT 1`)
   const salesChannelId = scRes.rows?.[0]?.id || null
 
+  const spRes = await pg.raw(`SELECT id FROM shipping_profile WHERE deleted_at IS NULL LIMIT 1`)
+  const shippingProfileId = spRes.rows?.[0]?.id || null
+
+  const locRes = await pg.raw(`SELECT id FROM stock_location WHERE deleted_at IS NULL LIMIT 1`)
+  const stockLocationId = locRes.rows?.[0]?.id || null
+
   console.log(`Existing in MedusaJS: ${existRes.rows?.length || 0} products`)
   console.log(`Sales Channel: ${salesChannelId}`)
+  console.log(`Shipping Profile: ${shippingProfileId}`)
+  console.log(`Stock Location: ${stockLocationId}`)
 
   // Load all Medusa categories into a handle->id map for fast lookup
   const catRes = await pg.raw(`SELECT id, handle FROM product_category WHERE deleted_at IS NULL`)
@@ -220,15 +228,45 @@ export default async function odooSync({ container }: ExecArgs) {
           [p.name, p.description_sale || "", status, p.weight ? String(p.weight) : null, metadata, imageUrl, existingProdId]
         )
         const vr = await pg.raw(
-          `SELECT pvps.price_set_id FROM product_variant pv JOIN product_variant_price_set pvps ON pvps.variant_id=pv.id WHERE pv.product_id=? AND pv.deleted_at IS NULL LIMIT 1`,
+          `SELECT pv.id as variant_id, pvps.price_set_id FROM product_variant pv JOIN product_variant_price_set pvps ON pvps.variant_id=pv.id WHERE pv.product_id=? AND pv.deleted_at IS NULL LIMIT 1`,
           [existingProdId]
         )
-        if (vr.rows?.length > 0 && p.list_price > 0) {
-          const rawAmt = JSON.stringify({ value: String(p.list_price), precision: 20 })
-          await pg.raw(
-            `UPDATE price SET amount=?, currency_code=?, raw_amount=?, updated_at=NOW() WHERE price_set_id=? AND deleted_at IS NULL`, 
-            [p.list_price, CURRENCY, rawAmt, vr.rows[0].price_set_id]
-          )
+        if (vr.rows?.length > 0) {
+          const vId = vr.rows[0].variant_id
+          if (p.list_price > 0) {
+            const rawAmt = JSON.stringify({ value: String(p.list_price), precision: 20 })
+            await pg.raw(
+              `UPDATE price SET amount=?, currency_code=?, raw_amount=?, updated_at=NOW() WHERE price_set_id=? AND deleted_at IS NULL`, 
+              [p.list_price, CURRENCY, rawAmt, vr.rows[0].price_set_id]
+            )
+          }
+
+          // Inventory sync for existing variant
+          if (stockLocationId) {
+            const invRes = await pg.raw(`SELECT inventory_item_id FROM product_variant_inventory_item WHERE variant_id = ? LIMIT 1`, [vId])
+            if (invRes.rows?.length > 0) {
+              const invId = invRes.rows[0].inventory_item_id
+              const lvlRes = await pg.raw(`SELECT id FROM inventory_level WHERE inventory_item_id = ? AND location_id = ? LIMIT 1`, [invId, stockLocationId])
+              if (lvlRes.rows?.length > 0) {
+                await pg.raw(`UPDATE inventory_level SET stocked_quantity = ?, updated_at = NOW() WHERE id = ?`, [p.qty_available || 0, lvlRes.rows[0].id])
+              } else {
+                await pg.raw(`INSERT INTO inventory_level (id, inventory_item_id, location_id, stocked_quantity, reserved_quantity, created_at, updated_at) VALUES (?, ?, ?, ?, 0, NOW(), NOW())`, [genId("ilev"), invId, stockLocationId, p.qty_available || 0])
+              }
+            } else {
+              const newInvId = genId("inv")
+              await pg.raw(`INSERT INTO inventory_item (id, sku, created_at, updated_at) VALUES (?, ?, NOW(), NOW())`, [newInvId, sku])
+              await pg.raw(`INSERT INTO product_variant_inventory_item (id, variant_id, inventory_item_id, required_quantity, created_at, updated_at) VALUES (?, ?, ?, 1, NOW(), NOW())`, [genId("pvii"), vId, newInvId])
+              await pg.raw(`INSERT INTO inventory_level (id, inventory_item_id, location_id, stocked_quantity, reserved_quantity, created_at, updated_at) VALUES (?, ?, ?, ?, 0, NOW(), NOW())`, [genId("ilev"), newInvId, stockLocationId, p.qty_available || 0])
+            }
+          }
+        }
+
+        // Assign Shipping Profile
+        if (shippingProfileId) {
+          const spCheck = await pg.raw(`SELECT id FROM product_shipping_profile WHERE product_id = ? AND profile_id = ? LIMIT 1`, [existingProdId, shippingProfileId])
+          if (spCheck.rows?.length === 0) {
+            await pg.raw(`INSERT INTO product_shipping_profile (id, product_id, profile_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())`, [genId("psp"), existingProdId, shippingProfileId])
+          }
         }
         // Assign category from Odoo category path
         const catHandle = odooCategoryToHandle(category)
@@ -257,6 +295,19 @@ export default async function odooSync({ container }: ExecArgs) {
           `INSERT INTO product_variant (id,product_id,title,sku,barcode,manage_inventory,allow_backorder,variant_rank,created_at,updated_at) VALUES (?,?,'Default',?,?,true,false,0,NOW(),NOW())`,
           [variantId, productId, sku, p.barcode || null]
         )
+
+        // Assign Shipping Profile
+        if (shippingProfileId) {
+          await pg.raw(`INSERT INTO product_shipping_profile (id, product_id, profile_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())`, [genId("psp"), productId, shippingProfileId])
+        }
+
+        // Create Inventory Item and Level
+        if (stockLocationId) {
+          const invId = genId("inv")
+          await pg.raw(`INSERT INTO inventory_item (id, sku, created_at, updated_at) VALUES (?, ?, NOW(), NOW())`, [invId, sku])
+          await pg.raw(`INSERT INTO product_variant_inventory_item (id, variant_id, inventory_item_id, required_quantity, created_at, updated_at) VALUES (?, ?, ?, 1, NOW(), NOW())`, [genId("pvii"), variantId, invId])
+          await pg.raw(`INSERT INTO inventory_level (id, inventory_item_id, location_id, stocked_quantity, reserved_quantity, created_at, updated_at) VALUES (?, ?, ?, ?, 0, NOW(), NOW())`, [genId("ilev"), invId, stockLocationId, p.qty_available || 0])
+        }
 
         if (p.list_price > 0) {
           const psid = genId("pset")
