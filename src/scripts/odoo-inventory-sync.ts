@@ -82,7 +82,7 @@ export default async function odooInventorySync({ container }: ExecArgs) {
             odooDb, uid, odooPassword, "stock.quant", "search_read", 
             [[["product_id", "=", pid]]], 
             { 
-              fields: ["quantity", "reserved_quantity", "location_id"],
+              fields: ["id", "product_id", "quantity", "reserved_quantity", "location_id", "company_id"],
               limit: 10 
             }
           ] 
