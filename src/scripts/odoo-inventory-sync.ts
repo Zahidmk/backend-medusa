@@ -64,8 +64,30 @@ export default async function odooInventorySync({ container }: ExecArgs) {
   console.log("\n2️⃣ Fetching inventory from Odoo...")
   
   let odooProducts: OdooProduct[] = []
+  
+  // Discover available quantity fields safely
+  console.log("\n🔍 Discovering available quantity fields in Odoo...")
   try {
-    const productsResponse = await axios.post(`${odooUrl}/jsonrpc`, {
+      const discoveryRes = await axios.post(`${odooUrl}/jsonrpc`, {
+        jsonrpc: "2.0", method: "call",
+        params: {
+          service: "object", method: "execute_kw",
+          args: [odooDb, uid, odooPassword, "product.product", "search_read", [[["active", "=", true]]], { limit: 1 }]
+        }, id: 2
+      })
+      const sample = discoveryRes.data.result?.[0]
+      if (sample) {
+        const qtyKeys = Object.keys(sample).filter(k => k.includes("qty") || k.includes("quant") || k.includes("available"))
+        console.log("--- DEBUG: AVAILABLE QUANTITY FIELDS ---")
+        console.log(qtyKeys.map(k => `${k}: ${sample[k]}`))
+        console.log("----------------------------------------\n")
+      }
+    } catch (e: any) {
+      console.log("Could not discover schema:", e.message)
+    }
+
+    try {
+      const productsResponse = await axios.post(`${odooUrl}/jsonrpc`, {
       jsonrpc: "2.0",
       method: "call",
       params: {
@@ -84,7 +106,7 @@ export default async function odooInventorySync({ container }: ExecArgs) {
           }
         ]
       },
-      id: 2
+      id: 3
     })
     
     odooProducts = productsResponse.data.result || []
