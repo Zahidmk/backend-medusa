@@ -128,12 +128,29 @@ export default async function odooSync({ container }: ExecArgs) {
   const totalCount = await odooCall("product.template", "search_count", [[["active", "=", true], ["sale_ok", "=", true]]])
   console.log(`Total active saleable products in Odoo: ${totalCount}`)
 
-  // 3. Fetch ALL products
-  console.log(`\n3. Fetching products (page size: ${PAGE_SIZE})...`)
+  // 3. Fetch ONE product first to discover what price fields actually exist in your Odoo
+  console.log(`\n3. Discovering available price fields in Odoo...`)
+  try {
+    const single = await odooCall("product.template", "search_read",
+      [[["active", "=", true], ["sale_ok", "=", true]]],
+      { limit: 1 } // No fields specified = fetch ALL fields
+    )
+    if (single && single.length > 0) {
+      const allKeys = Object.keys(single[0])
+      const priceKeys = allKeys.filter(k => k.includes("price") || k.includes("retail") || k.includes("cost") || k.includes("msrp"))
+      console.log("\n--- DEBUG: AVAILABLE PRICE-RELATED FIELDS IN YOUR ODOO ---")
+      console.log(priceKeys.map(k => `${k}: ${single[0][k]}`))
+      console.log("----------------------------------------------------------\n")
+    }
+  } catch (err: any) {
+    console.log("Could not fetch schema:", err.message)
+  }
+
+  // 4. Fetch ALL products safely
+  console.log(`\n4. Fetching products (page size: ${PAGE_SIZE})...`)
   const fields = [
     "id", "name", "default_code", "barcode",
-    "list_price", "compare_list_price", 
-    "retail_price", "x_retail_price", "x_compare_list_price", // Check common custom retail price fields
+    "list_price", "compare_list_price",
     "description_sale", "categ_id", "brand_id", "x_studio_brand_1", "custom_brand_id",
     "weight", "qty_available", "is_published", "website_url",
   ]
