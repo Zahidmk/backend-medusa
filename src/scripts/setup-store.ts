@@ -117,8 +117,44 @@ export default async function setupStore({ container }: ExecArgs) {
       console.log(`  ✅ Created Service Zone: ${kuwaitServiceZone.id}`)
     }
 
-    // 5. Shipping Profile, Option & Price
-    console.log("\n5️⃣ Setting up Shipping Profile & Options...")
+    // 5. Establish All Links
+    console.log("\n5️⃣ Establishing System Links...")
+    
+    // Link Warehouse ↔ Sales Channel
+    try {
+      await remoteLink.create({ 
+        [Modules.SALES_CHANNEL]: { sales_channel_id: defaultChannel.id },
+        [Modules.STOCK_LOCATION]: { stock_location_id: kuwaitLocation.id }
+      })
+      console.log("  ✅ Location ↔ Sales Channel linked")
+    } catch (e: any) {
+      console.log("  ⚠️ Sales channel link error:", e.message)
+    }
+
+    // Link Fulfillment Set ↔ Warehouse (Using standard module names for v2)
+    try {
+      await remoteLink.create({ 
+        [Modules.STOCK_LOCATION]: { stock_location_id: kuwaitLocation.id },
+        [Modules.FULFILLMENT]: { fulfillment_set_id: kuwaitFulfillmentSet.id }
+      })
+      console.log("  ✅ Location ↔ Fulfillment Set linked")
+    } catch (e: any) {
+      console.log("  ⚠️ Fulfillment set link error:", e.message)
+    }
+
+    // Link Fulfillment Provider ↔ Warehouse
+    try {
+      await remoteLink.create({
+        [Modules.STOCK_LOCATION]: { stock_location_id: kuwaitLocation.id },
+        [Modules.FULFILLMENT]: { fulfillment_provider_id: "manual_manual" }
+      })
+      console.log("  ✅ Location ↔ Fulfillment Provider linked")
+    } catch (e: any) {
+      console.log("  ⚠️ Provider link error:", e.message)
+    }
+
+    // 6. Shipping Profile, Option & Price
+    console.log("\n6️⃣ Setting up Shipping Profile & Options...")
     let defaultProfile
     const shippingProfiles = await fulfillmentModuleService.listShippingProfiles({ name: "Default" })
     if (shippingProfiles.length > 0) {
@@ -154,42 +190,6 @@ export default async function setupStore({ container }: ExecArgs) {
     
     shippingOption = createdOptions[0]
     console.log(`  ✅ Created Shipping Option (with linked Price Set): ${shippingOption.id}`)
-
-    // 6. Establish All Links
-    console.log("\n6️⃣ Establishing System Links...")
-    
-    // Link Warehouse ↔ Sales Channel
-    try {
-      await remoteLink.create({ 
-        [Modules.SALES_CHANNEL]: { sales_channel_id: defaultChannel.id },
-        [Modules.STOCK_LOCATION]: { stock_location_id: kuwaitLocation.id }
-      })
-      console.log("  ✅ Location ↔ Sales Channel linked")
-    } catch (e: any) {
-      console.log("  ⚠️ Sales channel link error:", e.message)
-    }
-
-    // Link Fulfillment Set ↔ Warehouse (Using standard module names for v2)
-    try {
-      await remoteLink.create({ 
-        [Modules.STOCK_LOCATION]: { stock_location_id: kuwaitLocation.id },
-        [Modules.FULFILLMENT]: { fulfillment_set_id: kuwaitFulfillmentSet.id }
-      })
-      console.log("  ✅ Location ↔ Fulfillment Set linked")
-    } catch (e: any) {
-      console.log("  ⚠️ Fulfillment set link error:", e.message)
-    }
-
-    // Link Fulfillment Provider ↔ Warehouse
-    try {
-      await remoteLink.create({
-        [Modules.STOCK_LOCATION]: { stock_location_id: kuwaitLocation.id },
-        [Modules.FULFILLMENT]: { fulfillment_provider_id: "manual_manual" }
-      })
-      console.log("  ✅ Location ↔ Fulfillment Provider linked")
-    } catch (e: any) {
-      console.log("  ⚠️ Provider link error:", e.message)
-    }
 
     // 7. Publishable Key
     console.log("\n7️⃣ Setting up Publishable API Key...")
