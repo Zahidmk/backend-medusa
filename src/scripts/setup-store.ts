@@ -1,6 +1,11 @@
 import { ExecArgs } from "@medusajs/framework/types"
 import { Modules, ContainerRegistrationKeys } from "@medusajs/framework/utils"
-import { createApiKeysWorkflow, linkSalesChannelsToApiKeyWorkflow } from "@medusajs/medusa/core-flows"
+import { 
+  createApiKeysWorkflow, 
+  linkSalesChannelsToApiKeyWorkflow,
+  createShippingOptionsWorkflow,
+  deleteShippingOptionsWorkflow
+} from "@medusajs/medusa/core-flows"
 import fs from "fs"
 import path from "path"
 
@@ -129,25 +134,26 @@ export default async function setupStore({ container }: ExecArgs) {
 
     let shippingOption
     const existingOptions = await fulfillmentModuleService.listShippingOptions({ name: "Kuwait Standard Shipping" })
+    
     if (existingOptions.length > 0) {
-      shippingOption = existingOptions[0]
-      console.log(`  ✅ Found Shipping Option: ${shippingOption.id}`)
-    } else {
-      shippingOption = await fulfillmentModuleService.createShippingOptions({
+      console.log(`  🔄 Found existing Shipping Option, replacing it to guarantee correct pricing...`)
+      await deleteShippingOptionsWorkflow(container).run({ input: { ids: existingOptions.map(o => o.id) } })
+    }
+
+    const { result: createdOptions } = await createShippingOptionsWorkflow(container).run({
+      input: [{
         name: "Kuwait Standard Shipping",
         price_type: "flat",
         service_zone_id: kuwaitServiceZone.id,
         shipping_profile_id: defaultProfile.id,
         provider_id: "manual_manual",
-        type: { label: "Standard", description: "Standard shipping to Kuwait", code: "standard" }
-      })
-      console.log(`  ✅ Created Shipping Option: ${shippingOption.id}`)
-    }
-
-    const priceSet = await pricingService.createPriceSets({
-      prices: [{ amount: 0, currency_code: "kwd" }]
+        type: { label: "Standard", description: "Standard shipping to Kuwait", code: "standard" },
+        prices: [{ currency_code: "kwd", amount: 0 }]
+      }]
     })
-    console.log(`  ✅ Created Free Shipping Price Set: ${priceSet.id}`)
+    
+    shippingOption = createdOptions[0]
+    console.log(`  ✅ Created Shipping Option (with linked Price Set): ${shippingOption.id}`)
 
     // 6. Establish All Links
     console.log("\n6️⃣ Establishing System Links...")
@@ -156,12 +162,10 @@ export default async function setupStore({ container }: ExecArgs) {
       // Link Warehouse ↔ Sales Channel
       remoteLink.create({ sales_channel_stock_location: { sales_channel_id: defaultChannel.id, stock_location_id: kuwaitLocation.id } }).catch(() => {}),
       // Link Fulfillment Set ↔ Warehouse
-      remoteLink.create({ stock_location_fulfillment_set: { stock_location_id: kuwaitLocation.id, fulfillment_set_id: kuwaitFulfillmentSet.id } }).catch(() => {}),
-      // Link Shipping Option ↔ Price Set
-      remoteLink.create({ shipping_option_price_set: { shipping_option_id: shippingOption.id, price_set_id: priceSet.id } }).catch(() => {})
+      remoteLink.create({ stock_location_fulfillment_set: { stock_location_id: kuwaitLocation.id, fulfillment_set_id: kuwaitFulfillmentSet.id } }).catch(() => {})
     ]
     await Promise.all(linkPromises)
-    console.log("  ✅ Links established (ignored duplicates)")
+    console.log("  ✅ Location and Fulfillment links established")
 
     // 7. Publishable Key
     console.log("\n7️⃣ Setting up Publishable API Key...")
@@ -201,6 +205,16 @@ export default async function setupStore({ container }: ExecArgs) {
       }
     } catch (e: any) {
       console.log(`  ⚠️ Publishable Key setup skipped/failed: ${e.message}`)
+    }
+
+    // 8. Enforce No Backorders globally
+    console.log("\n8️⃣ Enforcing No Backorders...")
+    const pg = container.resolve(ContainerRegistrationKeys.PG_CONNECTION)
+    try {
+      const res = await pg.raw(`UPDATE product_variant SET allow_backorder = false WHERE allow_backorder = true RETURNING id`)
+      console.log(`  ✅ Disabled backorders for ${res.rows?.length || 0} existing variants`)
+    } catch (e: any) {
+      console.log(`  ⚠️ Failed to enforce backorder rule: ${e.message}`)
     }
 
     console.log("\n" + "=" .repeat(50))

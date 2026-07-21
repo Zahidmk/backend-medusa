@@ -19,6 +19,8 @@ import axios from "axios"
 
 const PAGE_SIZE = 200
 const CURRENCY = process.env.DEFAULT_CURRENCY || "kwd"
+const CURRENCY_MULTIPLIER = CURRENCY.toLowerCase() === "kwd" ? 1000 : 100
+
 
 function genId(prefix: string): string {
   const c = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -268,10 +270,11 @@ export default async function odooSync({ container }: ExecArgs) {
         if (vr.rows?.length > 0) {
           const vId = vr.rows[0].variant_id
           if (p.list_price > 0) {
-            const rawAmt = JSON.stringify({ value: String(p.list_price), precision: 20 })
+            const scaledPrice = Math.round(p.list_price * CURRENCY_MULTIPLIER)
+            const rawAmt = JSON.stringify({ value: String(scaledPrice), precision: 20 })
             await pg.raw(
               `UPDATE price SET amount=?, currency_code=?, raw_amount=?, updated_at=NOW() WHERE price_set_id=? AND deleted_at IS NULL`, 
-              [p.list_price, CURRENCY, rawAmt, vr.rows[0].price_set_id]
+              [scaledPrice, CURRENCY, rawAmt, vr.rows[0].price_set_id]
             )
           }
 
@@ -345,10 +348,11 @@ export default async function odooSync({ container }: ExecArgs) {
 
         if (p.list_price > 0) {
           const psid = genId("pset")
+          const scaledPrice = Math.round(p.list_price * CURRENCY_MULTIPLIER)
           await pg.raw(`INSERT INTO price_set (id,created_at,updated_at) VALUES (?,NOW(),NOW())`, [psid])
           await pg.raw(`INSERT INTO product_variant_price_set (id,variant_id,price_set_id,created_at,updated_at) VALUES (?,?,?,NOW(),NOW())`, [genId("pvps"), variantId, psid])
-          const rawAmt = JSON.stringify({ value: String(p.list_price), precision: 20 })
-          await pg.raw(`INSERT INTO price (id,price_set_id,currency_code,amount,raw_amount,rules_count,created_at,updated_at) VALUES (?,?,?,?,?,0,NOW(),NOW())`, [genId("price"), psid, CURRENCY, p.list_price, rawAmt])
+          const rawAmt = JSON.stringify({ value: String(scaledPrice), precision: 20 })
+          await pg.raw(`INSERT INTO price (id,price_set_id,currency_code,amount,raw_amount,rules_count,created_at,updated_at) VALUES (?,?,?,?,?,0,NOW(),NOW())`, [genId("price"), psid, CURRENCY, scaledPrice, rawAmt])
         }
 
         if (imageUrl) {

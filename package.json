@@ -35,6 +35,7 @@
     "create:sample-video": "medusa exec ./src/scripts/create-sample-video.ts",
     "setup:store": "medusa exec ./src/scripts/setup-store.ts",
     "setup:shipping": "medusa exec ./src/scripts/setup-kuwait-shipping.ts",
+    "fix:backorders": "medusa exec ./src/scripts/fix-backorders.ts",
     "sync:prices": "medusa exec ./src/scripts/sync-odoo-prices.ts",
     "deploy:fresh": "npm run db:migrate && npm run setup:store && npm run sync:all",
     "deploy:production": "npm run prod:build && npm run db:migrate && npm run setup:store && npm run sync:all",
