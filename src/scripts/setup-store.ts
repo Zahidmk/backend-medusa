@@ -158,14 +158,38 @@ export default async function setupStore({ container }: ExecArgs) {
     // 6. Establish All Links
     console.log("\n6️⃣ Establishing System Links...")
     
-    const linkPromises = [
-      // Link Warehouse ↔ Sales Channel
-      remoteLink.create({ sales_channel_stock_location: { sales_channel_id: defaultChannel.id, stock_location_id: kuwaitLocation.id } }).catch(() => {}),
-      // Link Fulfillment Set ↔ Warehouse
-      remoteLink.create({ stock_location_fulfillment_set: { stock_location_id: kuwaitLocation.id, fulfillment_set_id: kuwaitFulfillmentSet.id } }).catch(() => {})
-    ]
-    await Promise.all(linkPromises)
-    console.log("  ✅ Location and Fulfillment links established")
+    // Link Warehouse ↔ Sales Channel
+    try {
+      await remoteLink.create({ 
+        [Modules.SALES_CHANNEL]: { sales_channel_id: defaultChannel.id },
+        [Modules.STOCK_LOCATION]: { stock_location_id: kuwaitLocation.id }
+      })
+      console.log("  ✅ Location ↔ Sales Channel linked")
+    } catch (e: any) {
+      console.log("  ⚠️ Sales channel link error:", e.message)
+    }
+
+    // Link Fulfillment Set ↔ Warehouse (Using standard module names for v2)
+    try {
+      await remoteLink.create({ 
+        [Modules.STOCK_LOCATION]: { stock_location_id: kuwaitLocation.id },
+        [Modules.FULFILLMENT]: { fulfillment_set_id: kuwaitFulfillmentSet.id }
+      })
+      console.log("  ✅ Location ↔ Fulfillment Set linked")
+    } catch (e: any) {
+      console.log("  ⚠️ Fulfillment set link error:", e.message)
+    }
+
+    // Link Fulfillment Provider ↔ Warehouse
+    try {
+      await remoteLink.create({
+        [Modules.STOCK_LOCATION]: { stock_location_id: kuwaitLocation.id },
+        [Modules.FULFILLMENT]: { fulfillment_provider_id: "manual_manual" }
+      })
+      console.log("  ✅ Location ↔ Fulfillment Provider linked")
+    } catch (e: any) {
+      console.log("  ⚠️ Provider link error:", e.message)
+    }
 
     // 7. Publishable Key
     console.log("\n7️⃣ Setting up Publishable API Key...")
