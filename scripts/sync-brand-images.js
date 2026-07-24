@@ -19,8 +19,8 @@ const path = require('path');
 const { Client } = require('pg');
 
 // ── Config ──
-const ODOO_URL = process.env.ODOO_URL || 'https://oskarllc-new-31031096.dev.odoo.com';
-const ODOO_DB = process.env.ODOO_DB_NAME || 'oskarllc-new-31031096';
+const ODOO_URL = process.env.ODOO_URL || 'https://oskarllc-new-35045199.dev.odoo.com';
+const ODOO_DB = process.env.ODOO_DB_NAME || 'oskarllc-new-35045199';
 const ODOO_USER = process.env.ODOO_USERNAME || 'SYG';
 const ODOO_PASS = process.env.ODOO_API_KEY || '2a420f7cb6d0c1c8f73368131f025f638c30704e';
 

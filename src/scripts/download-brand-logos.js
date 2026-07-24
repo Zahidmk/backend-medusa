@@ -8,15 +8,39 @@
  */
 
 const https = require('https');
+const http = require('http');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const ODOO_HOST = 'oskarllc-new-31031096.dev.odoo.com';
-const ODOO_DB   = 'oskarllc-new-31031096';
-const ODOO_USER = 'SYG';
-const ODOO_KEY  = '2a420f7cb6d0c1c8f73368131f025f638c30704e';
-const OUT_DIR   = '/var/www/marqa-souq/frontend/markasouq-web/public/brands';
+// ── Read environment from .env ──
+const IS_PROD = fs.existsSync('/var/www/marqa-souq/frontend/markasouq-web/public/brands');
+const dotenvPath = IS_PROD
+  ? '/var/www/marqa-souq/backend/backend-medusa/.env'
+  : path.join(__dirname, '..', '..', '.env');
+
+if (fs.existsSync(dotenvPath)) {
+  const envContent = fs.readFileSync(dotenvPath, 'utf8');
+  envContent.split('\n').forEach(line => {
+    const match = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*"?([^"\r\n]+)"?/);
+    if (match && !process.env[match[1]]) {
+      process.env[match[1]] = match[2];
+    }
+  });
+}
+
+const rawOdooUrl = process.env.ODOO_URL || 'https://oskarllc-new-35045199.dev.odoo.com';
+const ODOO_DB   = process.env.ODOO_DB_NAME || 'oskarllc-new-35045199';
+const ODOO_USER = process.env.ODOO_USERNAME || 'SYG';
+const ODOO_KEY  = process.env.ODOO_API_KEY || '2a420f7cb6d0c1c8f73368131f025f638c30704e';
+
+const OUT_DIR = IS_PROD
+  ? '/var/www/marqa-souq/frontend/markasouq-web/public/brands'
+  : path.join(__dirname, '..', '..', '..', 'markasouq-web', 'public', 'brands');
+
+const parsedUrl = new URL(rawOdooUrl);
+const ODOO_HOST = parsedUrl.hostname;
+const ODOO_PROTO = parsedUrl.protocol;
 
 let reqId = 0;
 
@@ -33,13 +57,18 @@ function jsonrpc(params) {
       },
       rejectUnauthorized: false,
     };
-    const req = https.request(options, (res) => {
+    const reqLib = ODOO_PROTO === 'https:' ? https : http;
+    const req = reqLib.request(options, (res) => {
       let data = '';
       res.on('data', (d) => (data += d));
       res.on('end', () => {
-        const r = JSON.parse(data);
-        if (r.error) reject(new Error(JSON.stringify(r.error)));
-        else resolve(r.result);
+        try {
+          const r = JSON.parse(data);
+          if (r.error) reject(new Error(JSON.stringify(r.error)));
+          else resolve(r.result);
+        } catch (e) {
+          reject(new Error(`Odoo response error (${res.statusCode}): ${data.substring(0, 150)}`));
+        }
       });
     });
     req.on('error', reject);
@@ -53,6 +82,13 @@ function slugify(name) {
 }
 
 async function main() {
+  console.log(`Connecting to Odoo at ${ODOO_PROTO}//${ODOO_HOST} (DB: ${ODOO_DB})...`);
+
+  // Ensure output directory exists
+  if (!fs.existsSync(OUT_DIR)) {
+    fs.mkdirSync(OUT_DIR, { recursive: true });
+  }
+
   // 1. Authenticate
   const uid = await jsonrpc({
     service: 'common', method: 'authenticate',
@@ -68,23 +104,32 @@ async function main() {
       service: 'object', method: 'execute_kw',
       args: [ODOO_DB, uid, ODOO_KEY, 'custom.product.brand', 'search_read', [[]], {
         fields: ['id', 'name', 'image_1920'],
-        limit: 200,
+        limit: 500,
       }],
     });
     console.log(`Got ${brands.length} brands from custom.product.brand`);
   } catch (e) {
-    console.error('Failed to fetch brands:', e.message.substring(0, 120));
-    process.exit(1);
+    try {
+      brands = await jsonrpc({
+        service: 'object', method: 'execute_kw',
+        args: [ODOO_DB, uid, ODOO_KEY, 'product.brand', 'search_read', [[]], {
+          fields: ['id', 'name', 'image_1920'],
+          limit: 500,
+        }],
+      });
+      console.log(`Got ${brands.length} brands from product.brand`);
+    } catch (e2) {
+      console.error('Failed to fetch brands:', e.message.substring(0, 120));
+      process.exit(1);
+    }
   }
-  console.log('Fetched brands from Odoo:', brands.length);
 
   let saved = 0;
   for (const b of brands) {
     const name = (b.name || '').trim();
-    // Try image_1920 field
     const img = b.image_1920;
 
-    if (!img || img === true || img.length < 200) {
+    if (!img || img === true || (typeof img === 'string' && img.length < 200)) {
       console.log('  ⚠️  No logo:', name);
       continue;
     }
@@ -110,7 +155,7 @@ async function main() {
     saved++;
   }
 
-  console.log(`\nDone! Saved ${saved} logos.`);
+  console.log(`\nDone! Saved ${saved} logos to ${OUT_DIR}`);
 }
 
 main().catch((e) => { console.error('FATAL:', e.message); process.exit(1); });
