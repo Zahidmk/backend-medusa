@@ -13,15 +13,18 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
   const limit = parseInt(req.query.limit as string) || 50
   const offset = parseInt(req.query.offset as string) || 0
+  const isSpecialOnly = req.query.is_special === "true"
+
+  const specialFilter = isSpecialOnly ? "AND b.is_special = true" : ""
 
   const countResult = await pgConnection.raw(
     `SELECT COUNT(DISTINCT b.id) as total 
      FROM brand b
      INNER JOIN product_brand pb ON pb.brand_id = b.id AND pb.deleted_at IS NULL
      INNER JOIN product p ON p.id = pb.product_id AND p.deleted_at IS NULL AND p.status = 'published'
-     WHERE b.is_active = true AND b.deleted_at IS NULL`
+     WHERE b.is_active = true AND b.deleted_at IS NULL ${specialFilter}`
   )
-  const total = parseInt(countResult.rows[0].total)
+  const total = parseInt(countResult.rows[0]?.total || "0")
 
   const result = await pgConnection.raw(
     `SELECT DISTINCT ON (b.display_order, b.name, b.id) 
@@ -30,7 +33,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
      FROM brand b
      INNER JOIN product_brand pb ON pb.brand_id = b.id AND pb.deleted_at IS NULL
      INNER JOIN product p ON p.id = pb.product_id AND p.deleted_at IS NULL AND p.status = 'published'
-     WHERE b.is_active = true AND b.deleted_at IS NULL
+     WHERE b.is_active = true AND b.deleted_at IS NULL ${specialFilter}
      ORDER BY b.display_order ASC NULLS LAST, b.name ASC, b.id
      LIMIT ? OFFSET ?`,
     [limit, offset]
