@@ -743,15 +743,9 @@ const BrandsPage = () => {
               Brands Management
             </Heading>
             <Text className="text-gray-500 mt-1">
-              Create brands, then click <span className="font-semibold text-violet-600">"Assign Products"</span> to link products
+              Brands are automatically synced from Odoo. Click <span className="font-semibold text-amber-600 font-medium">"Edit"</span> to mark a brand as <span className="font-semibold text-amber-600">"⭐ Special Brand"</span> for the homepage Explore section.
             </Text>
           </div>
-          <Button
-            onClick={() => { setEditingBrand(null); setIsDrawerOpen(true) }}
-            className="sm:w-auto w-full bg-violet-600 border-violet-600 hover:bg-violet-700"
-          >
-            + Add New Brand
-          </Button>
         </div>
 
         {/* Stats */}
