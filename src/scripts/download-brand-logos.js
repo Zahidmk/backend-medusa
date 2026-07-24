@@ -98,7 +98,6 @@ async function main() {
   console.log('✅ Odoo UID:', uid);
 
   // 2. Fetch brands using custom.product.brand with bin_size = false context
-  // CRITICAL: bin_size = false forces Odoo to return actual base64 binary strings instead of boolean true or size markers
   let modelName = 'custom.product.brand';
   let brands = [];
   try {
@@ -109,7 +108,7 @@ async function main() {
         modelName, 'search_read',
         [[]],
         {
-          fields: ['id', 'name', 'image_1920', 'image_512', 'image_128'],
+          fields: ['id', 'name', 'image_1920'],
           context: { bin_size: false },
           limit: 500,
         }
@@ -117,6 +116,7 @@ async function main() {
     });
     console.log(`Got ${brands.length} brands from ${modelName} (with bin_size=false)`);
   } catch (e) {
+    console.error('Error fetching custom.product.brand:', e.message);
     modelName = 'product.brand';
     try {
       brands = await jsonrpc({
@@ -126,7 +126,7 @@ async function main() {
           modelName, 'search_read',
           [[]],
           {
-            fields: ['id', 'name', 'image_1920', 'image_512', 'image_128'],
+            fields: ['id', 'name', 'image_1920'],
             context: { bin_size: false },
             limit: 500,
           }
@@ -134,7 +134,7 @@ async function main() {
       });
       console.log(`Got ${brands.length} brands from ${modelName} (with bin_size=false)`);
     } catch (e2) {
-      console.error('Failed to fetch brands:', e.message.substring(0, 120));
+      console.error('Failed to fetch brands:', e2.message);
       process.exit(1);
     }
   }
@@ -142,32 +142,25 @@ async function main() {
   let saved = 0;
   for (const b of brands) {
     const name = (b.name || '').trim();
-    let img = b.image_1920 || b.image_512 || b.image_128;
+    let img = b.image_1920;
 
-    // Log data type for debugging
-    if (typeof img === 'string') {
-      console.log(`🔍 Brand "${name}": base64 string length = ${img.length}`);
-    } else {
-      console.log(`🔍 Brand "${name}": image type = ${typeof img} (${img})`);
-    }
-
-    // If search_read didn't include binary data, perform an explicit read with bin_size=false
+    // If search_read returned true / boolean size marker, do explicit read with bin_size=false
     if (!img || img === true || (typeof img === 'string' && img.length < 200)) {
       try {
-        const [readBrand] = await jsonrpc({
+        const readResult = await jsonrpc({
           service: 'object', method: 'execute_kw',
           args: [
             ODOO_DB, uid, ODOO_KEY,
             modelName, 'read',
             [[b.id]],
             {
-              fields: ['image_1920', 'image_512', 'image_128'],
+              fields: ['id', 'name', 'image_1920'],
               context: { bin_size: false }
             }
           ]
         });
-        if (readBrand) {
-          img = readBrand.image_1920 || readBrand.image_512 || readBrand.image_128;
+        if (Array.isArray(readResult) && readResult[0]) {
+          img = readResult[0].image_1920;
         }
       } catch (err) {
         // Ignore read fallback error
@@ -175,7 +168,7 @@ async function main() {
     }
 
     if (!img || img === true || (typeof img === 'string' && img.length < 200)) {
-      console.log(`  ⚠️  No logo in Odoo for "${name}"`);
+      console.log(`  ⚠️  No logo in Odoo for "${name}" (type: ${typeof img})`);
       continue;
     }
 
