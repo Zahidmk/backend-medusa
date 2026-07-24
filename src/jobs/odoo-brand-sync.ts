@@ -46,35 +46,16 @@ export default async function odooBrandSyncJob({ container }: { container: Medus
         fs.mkdirSync(outDir, { recursive: true });
     }
 
+    const odooUrl = (process.env.ODOO_URL || "https://oskarllc-new-35045199.dev.odoo.com").replace(/\/$/, '')
+
     for (const odooBrand of brands) {
       const name = (odooBrand.name || "").trim();
       if (!name) continue;
 
-      let logoUrl: string | null = null;
-      const img = odooBrand.image_1920;
-
-      // Extract and save base64 image data from Odoo
-      if (img && img !== true && typeof img === 'string' && img.length > 200) {
-        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-        
-        try {
-            const buf = Buffer.from(img, 'base64');
-            const isSvg = buf.slice(0, 100).toString('utf8').trim().startsWith('<svg') || 
-                          buf.slice(0, 100).toString('utf8').trim().startsWith('<?xml');
-            const ext = isSvg ? '.svg' : '.png';
-            
-            const fname = slug + '-brand' + ext;
-            const fpath = path.join(outDir, fname);
-            
-            fs.writeFileSync(fpath, buf);
-            logoUrl = '/static/uploads/brands/' + fname;
-            logger.info(`[Brand Sync] ${name}: saved logo → ${fname} (${buf.length} bytes)`);
-        } catch(e: any) {
-            logger.error(`[Brand Sync] Failed to write image for ${name}: ${e.message}`);
-        }
-      } else {
-        logger.warn(`[Brand Sync] ${name}: no valid image data found in Odoo`);
-      }
+      // Construct direct Odoo image URL (same as product template images)
+      const logoUrl = odooBrand.id
+        ? `${odooUrl}/web/image/custom.product.brand/${odooBrand.id}/image_1920`
+        : null;
 
       // Upsert into DB manually using pgConnection because BrandService might not have upsert
       try {
@@ -84,11 +65,8 @@ export default async function odooBrandSyncJob({ container }: { container: Medus
         );
         
         if (existingResult.rows?.length > 0) {
-          // Update — always use new logo from Odoo if we have one, otherwise keep existing
           const existingId = existingResult.rows[0].id;
           const currentLogo = existingResult.rows[0].logo_url;
-          
-          // Use newly fetched logo if available, otherwise keep the current one
           const newLogo = logoUrl || currentLogo;
           
           await pgConnection.raw(
@@ -97,7 +75,6 @@ export default async function odooBrandSyncJob({ container }: { container: Medus
           );
           updated++;
         } else {
-          // Create new using Medusa Service to ensure ID generation and other hooks
           const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
           await brandService.createBrands({
              name: name,
