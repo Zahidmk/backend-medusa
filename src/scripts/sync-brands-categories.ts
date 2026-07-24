@@ -142,16 +142,17 @@ export default async function syncBrandsCategories({ container }: ExecArgs) {
     try {
       const slug = slugify(odooBrand.name)
 
-      // Save logo image from base64
+      // Save logo image from base64 (Odoo uses image_1920 or logo)
       let logoUrl: string | null = null
-      if (odooBrand.logo && typeof odooBrand.logo === "string") {
-        const filename = saveBase64Image(odooBrand.logo, BRANDS_UPLOAD_DIR, `brand-${slug}`)
+      const imgData = odooBrand.image_1920 || odooBrand.logo
+      if (imgData && typeof imgData === "string") {
+        const filename = saveBase64Image(imgData, BRANDS_UPLOAD_DIR, `brand-${slug}`)
         if (filename) {
           logoUrl = `${BRANDS_URL_PREFIX}/${filename}`
           console.log(`   🖼️  Logo saved: ${odooBrand.name} → ${filename}`)
         } else {
           brandsNoLogo++
-          console.log(`   ⚠️  No logo data for brand: ${odooBrand.name}`)
+          console.log(`   ⚠️  No valid logo buffer for brand: ${odooBrand.name}`)
         }
       } else {
         brandsNoLogo++
