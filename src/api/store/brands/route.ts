@@ -39,13 +39,28 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     [limit, offset]
   )
 
+  const origin = (
+    process.env.BACKEND_URL ||
+    process.env.MEDUSA_URL ||
+    `${req.protocol}://${req.get('host')}`
+  ).replace(/\/$/, '')
+
+  const makeAbsolute = (u: string | null) => {
+    if (!u) return ""
+    let cleaned = u
+      .replace(/^https?:\/\/localhost:\d+/, '')
+      .replace(/^https?:\/\/127\.0\.0\.1:\d+/, '')
+    if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) return cleaned
+    return `${origin}${cleaned.startsWith('/') ? cleaned : '/' + cleaned}`
+  }
+
   const brands = result.rows.map((b: any) => ({
     id: b.id,
     name: b.name,
     slug: b.slug || b.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
     description: b.description || "",
-    logo_url: b.logo_url || "",
-    banner_url: b.banner_url || "",
+    logo_url: makeAbsolute(b.logo_url),
+    banner_url: makeAbsolute(b.banner_url),
     is_active: b.is_active,
     is_special: b.is_special,
     display_order: b.display_order || 99,

@@ -24,7 +24,28 @@ export async function GET(
     return res.status(404).json({ message: "Brand not found" })
   }
 
-  const brand = items[0]
+  const origin = (
+    process.env.BACKEND_URL ||
+    process.env.MEDUSA_URL ||
+    `${req.protocol}://${req.get('host')}`
+  ).replace(/\/$/, '')
+
+  const makeAbsolute = (u: string | null | undefined) => {
+    if (!u) return ""
+    let cleaned = u
+      .replace(/^https?:\/\/localhost:\d+/, '')
+      .replace(/^https?:\/\/127\.0\.0\.1:\d+/, '')
+    if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) return cleaned
+    return `${origin}${cleaned.startsWith('/') ? cleaned : '/' + cleaned}`
+  }
+
+  const rawBrand = items[0]
+  const brand = {
+    ...rawBrand,
+    logo_url: makeAbsolute(rawBrand.logo_url),
+    banner_url: makeAbsolute(rawBrand.banner_url),
+  }
+
   const productIds = await brandModuleService.listBrandProducts(brand.id)
 
   if (!productIds.length) {
