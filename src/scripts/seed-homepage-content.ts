@@ -225,9 +225,11 @@ export default async function seedHomepageContent({ container }: ExecArgs) {
     }
   }
 
-  // 3. Create Products for Apple Collection
-  console.log("\n🍎 Creating Apple Products...")
-  for (const product of APPLE_PRODUCTS) {
+  // 3. Demo Products (Skipped unless SEED_DEMO_PRODUCTS=true is passed)
+  const shouldSeedProducts = process.env.SEED_DEMO_PRODUCTS === "true"
+  if (shouldSeedProducts) {
+    console.log("\n🍎 Creating Apple Products...")
+    for (const product of APPLE_PRODUCTS) {
     try {
       const existing = await productService.listProducts({ handle: product.handle })
       if (existing.length > 0) {
@@ -313,6 +315,9 @@ export default async function seedHomepageContent({ container }: ExecArgs) {
     } catch (e: any) {
       console.log(`  ⚠ Product ${product.title}: ${e.message}`)
     }
+  }
+  } else {
+    console.log("\nℹ️ Skipping demo product creation (SEED_DEMO_PRODUCTS is set to false/not passed)")
   }
 
   // 6. Create Media/Videos
