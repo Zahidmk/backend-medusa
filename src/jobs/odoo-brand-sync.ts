@@ -52,10 +52,28 @@ export default async function odooBrandSyncJob({ container }: { container: Medus
       const name = (odooBrand.name || "").trim();
       if (!name) continue;
 
-      // Construct direct Odoo image URL (same as product template images)
-      const logoUrl = odooBrand.id
-        ? `${odooUrl}/web/image/custom.product.brand/${odooBrand.id}/image_1920`
-        : null;
+      let logoUrl: string | null = null;
+      const img = odooBrand.image_1920;
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+      // Save base64 image data from Odoo as local file on backend server
+      if (img && img !== true && typeof img === 'string' && img.length > 200) {
+        try {
+          const buf = Buffer.from(img, 'base64');
+          const isSvg = buf.slice(0, 100).toString('utf8').trim().startsWith('<svg') || 
+                        buf.slice(0, 100).toString('utf8').trim().startsWith('<?xml');
+          const ext = isSvg ? '.svg' : '.png';
+          
+          const fname = `${slug}-brand${ext}`;
+          const fpath = path.join(outDir, fname);
+          
+          fs.writeFileSync(fpath, buf);
+          logoUrl = `/static/uploads/brands/${fname}`;
+          logger.info(`[Brand Sync] ${name}: saved logo → ${fname} (${buf.length} bytes)`);
+        } catch (e: any) {
+          logger.error(`[Brand Sync] Failed to write image for ${name}: ${e.message}`);
+        }
+      }
 
       // Upsert into DB manually using pgConnection because BrandService might not have upsert
       try {
@@ -75,7 +93,6 @@ export default async function odooBrandSyncJob({ container }: { container: Medus
           );
           updated++;
         } else {
-          const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
           await brandService.createBrands({
              name: name,
              slug: slug,
