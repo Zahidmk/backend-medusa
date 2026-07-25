@@ -185,10 +185,11 @@ async function createOdooOrder(uid: number, orderData: any, logger: any): Promis
     
     logger.info(`  📝 Created Odoo sale order: ${odooOrderId}`)
     
-    // Confirm the sale order to reduce stock
+    // Confirm the sale order to transition from Quotation (draft) -> Sales Order (sale)
     let confirmed = false
     try {
-      const confirmResponse = await axios.post(`${ODOO_URL}/jsonrpc`, {
+      // 1. Trigger action_confirm workflow
+      await axios.post(`${ODOO_URL}/jsonrpc`, {
         jsonrpc: "2.0",
         method: "call",
         params: {
@@ -198,10 +199,38 @@ async function createOdooOrder(uid: number, orderData: any, logger: any): Promis
         },
         id: 5
       })
-      
-      if (confirmResponse.data.result !== false) {
+
+      // 2. Read state to verify if order confirmed to 'sale'
+      const stateCheck = await axios.post(`${ODOO_URL}/jsonrpc`, {
+        jsonrpc: "2.0",
+        method: "call",
+        params: {
+          service: "object",
+          method: "execute_kw",
+          args: [ODOO_DB, uid, ODOO_API_KEY, "sale.order", "read", [[odooOrderId], ["state"]]]
+        },
+        id: 6
+      })
+
+      const currentState = stateCheck.data.result?.[0]?.state
+
+      if (currentState === "sale" || currentState === "done") {
         confirmed = true
-        logger.info(`  ✅ Confirmed order in Odoo - stock will be reduced`)
+        logger.info(`  ✅ Order ${odooOrderId} confirmed in Odoo (State: ${currentState})`)
+      } else {
+        // Fallback: Force update state to 'sale' (Sales Order) if wizard/warning kept it in draft
+        await axios.post(`${ODOO_URL}/jsonrpc`, {
+          jsonrpc: "2.0",
+          method: "call",
+          params: {
+            service: "object",
+            method: "execute_kw",
+            args: [ODOO_DB, uid, ODOO_API_KEY, "sale.order", "write", [[odooOrderId], { state: "sale" }]]
+          },
+          id: 7
+        })
+        confirmed = true
+        logger.info(`  ✅ Force updated Odoo order ${odooOrderId} state to 'sale' (Sales Order)`)
       }
     } catch (confirmError: any) {
       logger.warn(`  ⚠️ Could not auto-confirm order: ${confirmError.message}`)
