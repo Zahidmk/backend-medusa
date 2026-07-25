@@ -52,12 +52,15 @@ export default async function odooBrandSyncJob({ container }: { container: Medus
       const name = (odooBrand.name || "").trim();
       if (!name) continue;
 
-      let logoUrl: string | null = null;
+      // Prefer public Odoo custom brand image endpoint if odooBrand.id exists
+      let logoUrl: string | null = odooBrand.id
+        ? `${odooUrl}/api/brand/image/${odooBrand.id}`
+        : null;
       const img = odooBrand.image_1920;
       const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-      // Save base64 image data from Odoo as local file on backend server
-      if (img && img !== true && typeof img === 'string' && img.length > 200) {
+      // Fallback: Save base64 image locally if available
+      if (!logoUrl && img && img !== true && typeof img === 'string' && img.length > 200) {
         try {
           const buf = Buffer.from(img, 'base64');
           const isSvg = buf.slice(0, 100).toString('utf8').trim().startsWith('<svg') || 

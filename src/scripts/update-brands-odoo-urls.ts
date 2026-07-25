@@ -39,7 +39,7 @@ export default async function updateBrandsOdooUrls({ container }: ExecArgs) {
       const name = (b.name || "").trim()
       if (!name || !b.id) continue
 
-      const directOdooUrl = `${odooUrl}/web/image/custom.product.brand/${b.id}/image_1920`
+      const directOdooUrl = `${odooUrl}/api/brand/image/${b.id}`
 
       const res = await pgConnection.raw(
         `UPDATE brand SET logo_url = ?, updated_at = NOW() WHERE LOWER(name) = ? RETURNING id, name`,
