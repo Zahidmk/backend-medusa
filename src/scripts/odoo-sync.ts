@@ -385,7 +385,7 @@ export default async function odooSync({ container }: ExecArgs) {
         // BRAND SYNC
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const brandImageUrl = brandOdooId
-          ? `${odooUrl.replace(/\/$/, '')}/web/image/custom.product.brand/${brandOdooId}/image_1920`
+          ? `${odooUrl.replace(/\/$/, '')}/api/brand/image/${brandOdooId}`
           : null;
 
         if (brandName && typeof brandName === "string") {

@@ -325,7 +325,7 @@ async function upsertProduct(
   const brandLogoUrl = p.brand_image_url
     || p.brand_logo_url
     || (p.custom_brand_id && Array.isArray(p.custom_brand_id)
-      ? `${ODOO_BASE_URL}/web/image/custom.product.brand/${p.custom_brand_id[0]}/image_1920`
+      ? `${ODOO_BASE_URL}/api/brand/image/${p.custom_brand_id[0]}`
       : null)
 
   // ── Category: prefer public_categ_ids (eCommerce path) over categ_id ─────
@@ -628,7 +628,7 @@ async function upsertProduct(
     const brandOdooId = (Array.isArray(p.custom_brand_id) ? p.custom_brand_id[0] : null) || (Array.isArray(p.brand_id) ? p.brand_id[0] : null) || null;
     // Build brand image URL from Odoo custom.product.brand model
     const brandImageUrl = brandOdooId
-      ? `${ODOO_BASE_URL}/web/image/custom.product.brand/${brandOdooId}/image_1920`
+      ? `${ODOO_BASE_URL}/api/brand/image/${brandOdooId}`
       : null;
 
     if (brandName && typeof brandName === "string") {

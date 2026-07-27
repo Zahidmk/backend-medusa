@@ -69,7 +69,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
       console.error(`[Brand Webhook] Failed to write image for ${name}: ${e.message}`)
     }
   } else if (brandData.id) {
-    logoUrl = `${odooUrl}/web/image/custom.product.brand/${brandData.id}/image_1920`
+    logoUrl = `${odooUrl}/api/brand/image/${brandData.id}`
   }
 
   // 4. Update Database
