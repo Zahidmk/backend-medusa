@@ -142,9 +142,10 @@ export default async function syncBrandsCategories({ container }: ExecArgs) {
     try {
       const slug = slugify(odooBrand.name)
 
-      // Save logo image from base64 (Odoo uses image_1920 or logo)
+      // Save logo image from base64 (checking all Odoo image size fields)
       let logoUrl: string | null = null
-      const imgData = odooBrand.image_1920 || odooBrand.logo
+      const bAny = odooBrand as any
+      const imgData = bAny.image_1920 || bAny.image_1024 || bAny.image_512 || bAny.image_256 || bAny.image_128 || bAny.logo
       if (imgData && typeof imgData === "string") {
         const filename = saveBase64Image(imgData, BRANDS_UPLOAD_DIR, `brand-${slug}`)
         if (filename) {

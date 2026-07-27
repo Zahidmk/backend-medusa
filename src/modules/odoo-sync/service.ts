@@ -609,7 +609,11 @@ class OdooSyncService {
         "custom.product.brand",
         "search_read",
         [[]],
-        { fields: ["id", "name", "image_1920"], limit: 500, context: { bin_size: false } }
+        { 
+          fields: ["id", "name", "image_1920", "image_1024", "image_512", "image_256", "image_128", "logo"], 
+          limit: 500, 
+          context: { bin_size: false } 
+        }
       )
       return brands as OdooBrand[]
     } catch (error: any) {

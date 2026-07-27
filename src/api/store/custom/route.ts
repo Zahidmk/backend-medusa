@@ -12,11 +12,9 @@ export async function GET(
 
   // Fetch real shipping option IDs + prices from DB
   let nightId = "so_night_delivery_marqa_01";
-  let fastId  = "so_01KAARY0HHVCJT1JG3F80QTK65"; // Express Shipping
   let normalId = "so_01KAARY0HHJP2Z1QQ17J33V2H4"; // Standard Shipping
-  let nightPrice  = 2.000;
-  let fastPrice   = 1.500;
-  let normalPrice = 1.000;
+  let nightPrice  = 2000;
+  let normalPrice = 1000;
 
   try {
     const pgConnection = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION);
@@ -34,13 +32,10 @@ export async function GET(
       const name = (row.name || "").toLowerCase();
       if (name.includes("night")) {
         nightId    = row.id;
-        nightPrice = row.amount / 1000;
-      } else if (name.includes("express") || name.includes("fast")) {
-        fastId    = row.id;
-        fastPrice = row.amount / 1000;
+        nightPrice = row.amount;
       } else if (name.includes("standard") || name.includes("normal")) {
         normalId    = row.id;
-        normalPrice = row.amount / 1000;
+        normalPrice = row.amount;
       }
     }
   } catch (e) {
@@ -57,15 +52,6 @@ export async function GET(
       price: nightPrice,
       estimated_days: "Same night",
       estimated_days_ar: "نفس الليلة",
-    },
-    {
-      key: "fast",
-      id: fastId,
-      label: "Fast Delivery",
-      label_ar: "توصيل سريع",
-      price: fastPrice,
-      estimated_days: "1-2 days",
-      estimated_days_ar: "١-٢ أيام",
     },
     {
       key: "normal",
