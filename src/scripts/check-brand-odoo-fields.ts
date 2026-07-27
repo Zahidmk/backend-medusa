@@ -10,7 +10,7 @@ export default async function checkBrandOdooFields({ container }: ExecArgs) {
     return
   }
 
-  await odoo.ensureAuth()
+  await (odoo as any).ensureAuth()
 
   try {
     // Fetch all brands from custom.product.brand
