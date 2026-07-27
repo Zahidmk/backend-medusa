@@ -215,9 +215,10 @@ interface OdooProductPayload {
   free_qty?: number
   virtual_available?: number         // forecasted qty (Odoo: virtual_available)
   is_published?: boolean
-  // ── eCommerce description (Odoo field: description_ecommerce) ─────────────
   description_ecommerce?: string     // Rich HTML description (Odoo native field)
   ecommerce_description?: string     // alias kept for backward compatibility
+  medusa_description?: string        // Custom Medusa description field
+  medusa_overview?: string           // Custom Medusa overview field
   // ── Category / Sub-category ───────────────────────────────────────────────
   x_studio_sub_category?: string     // Odoo custom sub-category string
   // ── SEO (Odoo fields: website_meta_title, website_meta_description) ───────
@@ -397,6 +398,8 @@ async function upsertProduct(
     description_ar: p.arabic_description || null,
     // ── Descriptions ─────────────────────────────────────────────────────
     ecommerce_description: ecommerceDesc,
+    medusa_description: p.medusa_description || null,
+    medusa_overview: p.medusa_overview || null,
     // ── Category / Sub-category ───────────────────────────────────────────
     sub_category: p.x_studio_sub_category || null,
     public_categ_ids: p.public_categ_ids || null,    // full eCommerce path from Odoo
