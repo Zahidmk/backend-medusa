@@ -48,27 +48,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     fs.mkdirSync(BRANDS_UPLOAD_DIR, { recursive: true })
   }
 
-  // 3. Process logo: decode base64 or fallback to direct URL
+  // 3. Process logo: use direct Odoo API URL
   const odooUrl = (process.env.ODOO_URL || "https://oskarllc-new-35045199.dev.odoo.com").replace(/\/$/, '')
   let logoUrl: string | null = null
-  const img = brandData.image_1920
 
-  if (img && typeof img === 'string' && img.length > 200) {
-    try {
-      const buf = Buffer.from(img, 'base64')
-      const isSvg = buf.slice(0, 100).toString('utf8').trim().startsWith('<svg') || 
-                    buf.slice(0, 100).toString('utf8').trim().startsWith('<?xml')
-      const ext = isSvg ? '.svg' : '.png'
-      
-      const fname = `${slug}-brand${ext}`
-      const fpath = path.join(BRANDS_UPLOAD_DIR, fname)
-      
-      fs.writeFileSync(fpath, buf)
-      logoUrl = `/static/uploads/brands/${fname}`
-    } catch(e: any) {
-      console.error(`[Brand Webhook] Failed to write image for ${name}: ${e.message}`)
-    }
-  } else if (brandData.id) {
+  if (brandData.id) {
     logoUrl = `${odooUrl}/api/brand/image/${brandData.id}`
   }
 
