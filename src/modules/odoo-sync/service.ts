@@ -56,6 +56,8 @@ export interface OdooProduct {
   description: string | false           // Internal description
   description_sale: string | false      // Sales description
   description_ecommerce: string | false // Rich HTML for website PDP
+  medusa_description?: string | false   // Custom Medusa field
+  medusa_overview?: string | false      // Custom Medusa field
 
   // ── Brand & Category ──
   brand_id: M2O                         // product.brand many2one
@@ -294,6 +296,7 @@ export const ODOO_PRODUCT_TEMPLATE_FIELDS = [
 
   // Descriptions
   "description", "description_sale", "description_ecommerce",
+  "medusa_description", "medusa_overview",
 
   // Brand & Category
   "brand_id", "categ_id", "public_categ_ids",
@@ -902,6 +905,8 @@ class OdooSyncService {
 
         // ── Descriptions ──
         ecommerce_description: product.description_ecommerce || null,
+        medusa_description: product.medusa_description || null,
+        medusa_overview: product.medusa_overview || null,
 
         // ── Inventory ──
         odoo_stock: product.qty_available || 0,
