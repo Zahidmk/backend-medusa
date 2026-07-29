@@ -9,7 +9,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     const search = (req.query.q as string) || ""
     const idsParam = (req.query.ids as string) || ""
-    const statusParam = (req.query.status as string) || "published" // Default to published only
+    const statusParam = (req.query.status as string) || "" // Only filter if explicitly passed (e.g. status=published)
     const limit = parseInt((req.query.limit as string) || "50", 10)
     const offset = parseInt((req.query.offset as string) || "0", 10)
 
@@ -76,11 +76,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     try {
       const pgConnection = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
       const search = (req.query.q as string) || ""
-      const statusParam = (req.query.status as string) || "published"
+      const statusParam = (req.query.status as string) || ""
       const limit = parseInt((req.query.limit as string) || "50", 10)
       const bindings: any[] = []
       let where = "WHERE deleted_at IS NULL"
-      if (statusParam !== "all") {
+      if (statusParam && statusParam !== "all") {
         bindings.push(statusParam)
         where += " AND status = ?"
       }
