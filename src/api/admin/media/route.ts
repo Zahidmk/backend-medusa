@@ -1,8 +1,18 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { MEDIA_MODULE } from "../../../modules/media"
 
 // Admin endpoints require authentication
 export const AUTHENTICATE = true
+
+async function ensureProductIdsColumn(scope: any) {
+  try {
+    const pg = scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
+    await pg.raw(`ALTER TABLE IF EXISTS "media" ADD COLUMN IF NOT EXISTS "product_ids" jsonb null;`)
+  } catch (err) {
+    console.warn("Could not auto-add product_ids column:", err)
+  }
+}
 
 /**
  * GET /admin/media
@@ -10,6 +20,7 @@ export const AUTHENTICATE = true
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   try {
+    await ensureProductIdsColumn(req.scope)
     const mediaService = req.scope.resolve(MEDIA_MODULE) as any
     const limit = Number(req.query.limit || 50)
     const offset = Number(req.query.offset || 0)
@@ -46,8 +57,27 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   try {
+    await ensureProductIdsColumn(req.scope)
     const mediaService = req.scope.resolve(MEDIA_MODULE) as any
     const body = (req.body || {}) as any
+
+    const productIds = Array.isArray(body.product_ids) ? body.product_ids : []
+    let brand = body.brand || null
+
+    // Auto-derive brand from linked product if brand was not specified
+    if (!brand && productIds.length > 0) {
+      try {
+        const pg = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
+        const resProd = await pg.raw(`SELECT metadata FROM product WHERE id = ?`, [productIds[0]])
+        const meta = resProd.rows?.[0]?.metadata
+        const metaObj = typeof meta === 'string' ? JSON.parse(meta) : (meta || {})
+        if (metaObj.brand) {
+          brand = metaObj.brand
+        }
+      } catch (err) {
+        // non-blocking
+      }
+    }
 
     const payload: any = {
       url: body.url,
@@ -56,11 +86,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       mime_type: body.mime_type,
       alt_text: body.alt_text,
       thumbnail_url: body.thumbnail_url,
-      brand: body.brand,
+      brand,
       views: typeof body.views === "number" ? body.views : undefined,
       display_order: typeof body.display_order === "number" ? body.display_order : undefined,
       is_featured: typeof body.is_featured === "boolean" ? body.is_featured : undefined,
-      product_ids: Array.isArray(body.product_ids) ? body.product_ids : [],
+      product_ids: productIds,
       metadata: body.metadata,
     }
 
@@ -75,3 +105,4 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     res.status(500).json({ message: e?.message || 'Failed to create media' })
   }
 }
+

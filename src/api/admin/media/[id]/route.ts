@@ -1,9 +1,20 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { MEDIA_MODULE } from "../../../../modules/media"
 export const AUTHENTICATE = true
 
+async function ensureProductIdsColumn(scope: any) {
+  try {
+    const pg = scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
+    await pg.raw(`ALTER TABLE IF EXISTS "media" ADD COLUMN IF NOT EXISTS "product_ids" jsonb null;`)
+  } catch (err) {
+    console.warn("Could not auto-add product_ids column:", err)
+  }
+}
+
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   try {
+    await ensureProductIdsColumn(req.scope)
     const mediaService = req.scope.resolve(MEDIA_MODULE) as any
     const id = req.params.id
     const item = await (mediaService.retrieveMedia ? mediaService.retrieveMedia(id) : mediaService.get(id))
@@ -17,9 +28,29 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
 export async function PUT(req: MedusaRequest, res: MedusaResponse) {
   try {
+    await ensureProductIdsColumn(req.scope)
     const mediaService = req.scope.resolve(MEDIA_MODULE) as any
     const id = req.params.id
-    const body = req.body || {}
+    const body = (req.body || {}) as any
+
+    const productIds = Array.isArray(body.product_ids) ? body.product_ids : undefined
+    let brand = body.brand
+
+    // Auto-derive brand from linked product if brand is not provided or empty
+    if ((!brand || brand === 'Markasouq') && productIds && productIds.length > 0) {
+      try {
+        const pg = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
+        const resProd = await pg.raw(`SELECT metadata FROM product WHERE id = ?`, [productIds[0]])
+        const meta = resProd.rows?.[0]?.metadata
+        const metaObj = typeof meta === 'string' ? JSON.parse(meta) : (meta || {})
+        if (metaObj.brand) {
+          body.brand = metaObj.brand
+        }
+      } catch (err) {
+        // non-blocking
+      }
+    }
+
     // Use updateMedias/updateMedia pattern if available
     if (typeof mediaService.updateMedias === 'function') {
       const updated = await mediaService.updateMedias({ id }, body)

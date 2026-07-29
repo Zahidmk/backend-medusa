@@ -37,101 +37,6 @@ type Product = {
 
 const columnHelper = createDataTableColumnHelper<Media>()
 
-// ─── Brand Logo Picker ────────────────────────────────────────────────────────
-const BrandLogoPicker = ({
-  value,
-  onChange,
-}: {
-  value: string
-  onChange: (name: string) => void
-}) => {
-  const [open, setOpen] = useState(false)
-
-  const { data } = useQuery<{ brands: Brand[] }>({
-    queryKey: ["admin-brands-picker"],
-    queryFn: () => sdk.client.fetch("/admin/brands", { method: "GET" }),
-    staleTime: 60_000,
-  })
-  const brands = data?.brands ?? []
-  const selected = brands.find((b) => b.name === value)
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-3 px-3 py-2.5 border border-gray-300 rounded-lg bg-white hover:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400 transition-all text-left"
-      >
-        {selected ? (
-          <>
-            <div className="w-8 h-8 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
-              {selected.logo_url ? (
-                <img src={selected.logo_url} alt={selected.name} className="max-w-full max-h-full object-contain" />
-              ) : (
-                <span className="text-xs font-bold text-gray-400">{selected.name[0]}</span>
-              )}
-            </div>
-            <span className="text-sm font-medium text-gray-900">{selected.name}</span>
-          </>
-        ) : (
-          <span className="text-sm text-gray-400">Select brand logo…</span>
-        )}
-        <svg className="ml-auto w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
-            <button
-              type="button"
-              onClick={() => { onChange(""); setOpen(false) }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-400 hover:bg-gray-50 border-b border-gray-100 transition-colors"
-            >
-              <span className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-xs">✕</span>
-              Clear selection
-            </button>
-            <div className="max-h-64 overflow-y-auto p-2 grid grid-cols-2 gap-2">
-              {brands.length === 0 && (
-                <p className="col-span-2 text-center text-xs text-gray-400 py-4">No brands found</p>
-              )}
-              {brands.map((brand) => {
-                const isSelected = brand.name === value
-                return (
-                  <button
-                    key={brand.id}
-                    type="button"
-                    onClick={() => { onChange(brand.name); setOpen(false) }}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left ${isSelected ? "border-violet-400 bg-violet-50" : "border-gray-100 hover:border-gray-300 hover:bg-gray-50"}`}
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
-                      {brand.logo_url ? (
-                        <img src={brand.logo_url} alt={brand.name} className="max-w-full max-h-full object-contain" />
-                      ) : (
-                        <span className="text-xs font-bold text-gray-500">{brand.name[0]}</span>
-                      )}
-                    </div>
-                    <span className={`text-xs font-medium truncate ${isSelected ? "text-violet-700" : "text-gray-700"}`}>
-                      {brand.name}
-                    </span>
-                    {isSelected && (
-                      <svg className="ml-auto w-3.5 h-3.5 text-violet-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
 // ─── Product Search Picker ────────────────────────────────────────────────────
 const ProductPicker = ({
   selectedIds,
@@ -144,10 +49,29 @@ const ProductPicker = ({
 
   const { data, isLoading } = useQuery<{ products: Product[]; count: number }>({
     queryKey: ["admin-products-picker", search],
-    queryFn: () => sdk.client.fetch(`/admin/products?q=${encodeURIComponent(search)}&limit=20`, { method: "GET" }),
+    queryFn: () => sdk.client.fetch(`/admin/products?q=${encodeURIComponent(search)}&limit=30`, { method: "GET" }),
     staleTime: 30_000,
   })
   const products = data?.products ?? []
+
+  // Fetch info for selected product IDs if they aren't included in the current search query
+  const missingSelectedIds = useMemo(() => {
+    return selectedIds.filter((id) => !products.some((p) => p.id === id))
+  }, [selectedIds, products])
+
+  const { data: missingData } = useQuery<{ products: Product[] }>({
+    queryKey: ["admin-products-missing", missingSelectedIds.join(",")],
+    queryFn: () => sdk.client.fetch(`/admin/products?ids=${encodeURIComponent(missingSelectedIds.join(","))}`, { method: "GET" }),
+    enabled: missingSelectedIds.length > 0,
+    staleTime: 60_000,
+  })
+
+  const allKnownProductsMap = useMemo(() => {
+    const map = new Map<string, Product>()
+    products.forEach((p) => map.set(p.id, p))
+    missingData?.products?.forEach((p) => map.set(p.id, p))
+    return map
+  }, [products, missingData])
 
   const toggle = (id: string) => {
     if (selectedIds.includes(id)) {
@@ -160,27 +84,31 @@ const ProductPicker = ({
   return (
     <div>
       <Input
-        placeholder="Search products to link…"
+        placeholder="Search products by title or handle…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="mb-2"
+        style={{ backgroundColor: "#18181b", color: "#ffffff", borderColor: "#3f3f46" }}
       />
       {selectedIds.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-2">
+        <div className="flex flex-wrap gap-1.5 mb-2.5 p-2 rounded-lg" style={{ backgroundColor: "#18181b", border: "1px solid #27272a" }}>
           {selectedIds.map((id) => {
-            const p = products.find((x) => x.id === id)
+            const p = allKnownProductsMap.get(id)
             return (
-              <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-violet-100 text-violet-700 text-xs rounded-full">
-                {p?.title || id.substring(0, 12) + "…"}
-                <button type="button" onClick={() => toggle(id)} className="ml-0.5 hover:text-red-500">×</button>
+              <span key={id} className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full shadow-sm" style={{ backgroundColor: "#2e1065", color: "#f3e8ff", border: "1px solid #6d28d9" }}>
+                {p?.thumbnail && (
+                  <img src={p.thumbnail} alt="" className="w-4 h-4 rounded-full object-cover" />
+                )}
+                <span className="font-medium max-w-[200px] truncate" style={{ color: "#f3e8ff" }}>{p?.title || id.substring(0, 12) + "…"}</span>
+                <button type="button" onClick={() => toggle(id)} className="ml-1 font-bold hover:text-red-400" style={{ color: "#c4b5fd" }}>×</button>
               </span>
             )
           })}
         </div>
       )}
-      <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
-        {isLoading && <div className="p-3 text-xs text-gray-400 text-center">Loading…</div>}
-        {!isLoading && products.length === 0 && <div className="p-3 text-xs text-gray-400 text-center">No products found</div>}
+      <div className="max-h-56 overflow-y-auto rounded-lg divide-y shadow-inner" style={{ border: "1px solid #3f3f46", backgroundColor: "#18181b", borderColor: "#27272a" }}>
+        {isLoading && <div className="p-3 text-xs text-center" style={{ color: "#a1a1aa" }}>Loading products…</div>}
+        {!isLoading && products.length === 0 && <div className="p-3 text-xs text-center" style={{ color: "#a1a1aa" }}>No products found</div>}
         {products.map((p) => {
           const checked = selectedIds.includes(p.id)
           return (
@@ -188,13 +116,25 @@ const ProductPicker = ({
               key={p.id}
               type="button"
               onClick={() => toggle(p.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-50 transition-colors ${checked ? "bg-violet-50" : ""}`}
+              style={{
+                backgroundColor: checked ? "#2e1065" : "#18181b",
+                color: checked ? "#f3e8ff" : "#ffffff",
+                borderLeft: checked ? "4px solid #8b5cf6" : "none",
+                borderColor: "#27272a",
+              }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-zinc-800"
             >
-              <div className="w-8 h-8 rounded bg-gray-100 flex-shrink-0 overflow-hidden">
-                {p.thumbnail ? <img src={p.thumbnail} alt={p.title} className="w-full h-full object-contain" /> : <div className="w-full h-full bg-gray-200" />}
+              <div className="w-8 h-8 rounded flex-shrink-0 overflow-hidden border flex items-center justify-center" style={{ backgroundColor: "#27272a", borderColor: "#3f3f46" }}>
+                {p.thumbnail ? (
+                  <img src={p.thumbnail} alt={p.title} className="w-full h-full object-contain" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[10px]" style={{ color: "#71717a", backgroundColor: "#27272a" }}>No img</div>
+                )}
               </div>
-              <span className="text-xs text-gray-800 flex-1 truncate">{p.title}</span>
-              {checked && <span className="text-violet-500 text-sm">✓</span>}
+              <span className={`text-xs flex-1 truncate font-medium`} style={{ color: checked ? "#f3e8ff" : "#ffffff" }}>
+                {p.title}
+              </span>
+              {checked && <span className="text-sm font-bold ml-auto" style={{ color: "#a78bfa" }}>✓</span>}
             </button>
           )
         })}
@@ -207,7 +147,7 @@ const ProductPicker = ({
 const BrandCell = ({ name }: { name: string | null | undefined }) => {
   const { data } = useQuery<{ brands: Brand[] }>({
     queryKey: ["admin-brands-picker"],
-    queryFn: () => sdk.client.fetch("/admin/brands", { method: "GET" }),
+    queryFn: () => sdk.client.fetch("/admin/brands?limit=500", { method: "GET" }),
     staleTime: 60_000,
   })
   const brand = (data?.brands ?? []).find((b) => b.name === name)
@@ -215,11 +155,11 @@ const BrandCell = ({ name }: { name: string | null | undefined }) => {
   return (
     <div className="flex items-center gap-2">
       {brand?.logo_url ? (
-        <div className="w-6 h-6 rounded bg-gray-100 border border-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+        <div className="w-6 h-6 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center overflow-hidden flex-shrink-0">
           <img src={brand.logo_url} alt={brand.name} className="max-w-full max-h-full object-contain" />
         </div>
       ) : null}
-      <span className="text-sm">{name || "Markasouq"}</span>
+      <span className="text-sm text-zinc-100" style={{ color: "#f4f4f5" }}>{name || "-"}</span>
     </div>
   )
 }
@@ -308,7 +248,6 @@ const MediaPage = () => {
         title: snap.title || file.name,
         title_ar: snap.title_ar || null,
         mime_type: file.type,
-        brand: snap.brand || 'Markasouq',
         views: snap.views || 0,
         display_order: snap.display_order || 0,
         is_featured: snap.is_featured || false,
@@ -361,7 +300,6 @@ const MediaPage = () => {
         body: JSON.stringify({
           title: editMedia.title || '',
           title_ar: editMedia.title_ar || null,
-          brand: editMedia.brand || 'Markasouq',
           views: editMedia.views || 0,
           display_order: editMedia.display_order || 0,
           is_featured: editMedia.is_featured || false,
@@ -450,10 +388,6 @@ const MediaPage = () => {
             <Input placeholder="Title (English)" value={newMedia.title || ''} onChange={(e) => updateNewMedia((p) => ({ ...p, title: e.target.value }))} />
             <Input placeholder="Title (Arabic)" value={newMedia.title_ar || ''} onChange={(e) => updateNewMedia((p) => ({ ...p, title_ar: e.target.value }))} dir="rtl" />
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Brand</label>
-              <BrandLogoPicker value={newMedia.brand || ''} onChange={(name) => updateNewMedia((p) => ({ ...p, brand: name }))} />
-            </div>
-            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 Linked Products <span className="text-xs text-gray-400 font-normal">(shown on right side of video)</span>
               </label>
@@ -514,10 +448,6 @@ const MediaPage = () => {
             <Input placeholder="Title (English)" value={editMedia.title || ''} onChange={(e) => setEditMedia((p) => ({ ...p, title: e.target.value }))} />
             <Input placeholder="Title (Arabic)" value={editMedia.title_ar || ''} onChange={(e) => setEditMedia((p) => ({ ...p, title_ar: e.target.value }))} dir="rtl" />
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Brand</label>
-              <BrandLogoPicker value={editMedia.brand || ''} onChange={(name) => setEditMedia((p) => ({ ...p, brand: name }))} />
-            </div>
-            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 Linked Products <span className="text-xs text-gray-400 font-normal">(shown on right side of video)</span>
               </label>
@@ -550,4 +480,3 @@ const MediaPage = () => {
 
 export const config = defineRouteConfig({ label: 'Media', icon: Photo })
 export default MediaPage
-
