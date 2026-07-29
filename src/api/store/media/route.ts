@@ -83,7 +83,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
             title: row.title,
             handle: row.handle || null,
             thumbnail: row.thumbnail || null,
-            price: row.calculated_price ? (row.calculated_price / 100).toFixed(2) : null,
+            price: row.calculated_price ? (row.calculated_price / 1000).toFixed(3) : null,
           })
         }
       } catch (err) {
