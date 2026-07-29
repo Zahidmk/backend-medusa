@@ -178,17 +178,19 @@ const MediaPage = () => {
   const [newMedia, setNewMedia] = useState<Partial<Media>>({})
   const [submitting, setSubmitting] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [thumbUploading, setThumbUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [message, setMessage] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
+  const thumbFileRef = useRef<HTMLInputElement | null>(null)
+  const editThumbFileRef = useRef<HTMLInputElement | null>(null)
 
   // ── Edit state ─────────────────────────────────────────────────────────────
   const [openEdit, setOpenEdit] = useState(false)
   const [editMedia, setEditMedia] = useState<Partial<Media>>({})
   const [editSubmitting, setEditSubmitting] = useState(false)
   const [editMessage, setEditMessage] = useState<string | null>(null)
-  // ──────────────────────────────────────────────────────────────────────────
-  // Keep a ref mirror of newMedia so async handlers always read fresh values
+
   const newMediaRef = useRef<Partial<Media>>({})
 
   const closeAll = () => {
@@ -206,6 +208,31 @@ const MediaPage = () => {
       newMediaRef.current = next
       return next
     })
+  }
+
+  const handleThumbnailUpload = async (file: File, isEditMode: boolean) => {
+    setThumbUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/admin/media/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+      })
+      if (!res.ok) throw new Error('Thumbnail upload failed')
+      const json = await res.json()
+      const url = json.url
+      if (isEditMode) {
+        setEditMedia((p) => ({ ...p, thumbnail_url: url }))
+      } else {
+        updateNewMedia((p) => ({ ...p, thumbnail_url: url }))
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Thumbnail upload failed')
+    } finally {
+      setThumbUploading(false)
+    }
   }
 
   const handleUpload = async (file: File) => {
@@ -239,7 +266,6 @@ const MediaPage = () => {
         xhr.send(form)
       })
 
-      // Auto-save the record immediately after upload
       setSubmitting(true)
       setMessage('Saving…')
       const snap = newMediaRef.current
@@ -247,6 +273,7 @@ const MediaPage = () => {
         url: uploadedUrl,
         title: snap.title || file.name,
         title_ar: snap.title_ar || null,
+        thumbnail_url: snap.thumbnail_url || null,
         mime_type: file.type,
         views: snap.views || 0,
         display_order: snap.display_order || 0,
@@ -300,11 +327,11 @@ const MediaPage = () => {
         body: JSON.stringify({
           title: editMedia.title || '',
           title_ar: editMedia.title_ar || null,
+          thumbnail_url: editMedia.thumbnail_url || null,
           views: editMedia.views || 0,
           display_order: editMedia.display_order || 0,
           is_featured: editMedia.is_featured || false,
           product_ids: editMedia.product_ids || [],
-          thumbnail_url: editMedia.thumbnail_url || null,
         }),
       })
       if (!res.ok) {
@@ -393,6 +420,29 @@ const MediaPage = () => {
               </label>
               <ProductPicker selectedIds={newMedia.product_ids || []} onChange={(ids) => updateNewMedia((p) => ({ ...p, product_ids: ids }))} />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Custom Thumbnail <span className="text-xs text-gray-400 font-normal">(optional poster image for video)</span>
+              </label>
+              <div className="flex items-center gap-3">
+                {newMedia.thumbnail_url ? (
+                  <div className="w-16 h-12 rounded bg-zinc-800 border border-zinc-700 overflow-hidden flex-shrink-0 relative group">
+                    <img src={newMedia.thumbnail_url} alt="Thumbnail" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => updateNewMedia(p => ({ ...p, thumbnail_url: null }))}
+                      className="absolute inset-0 bg-black/70 text-red-400 font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : null}
+                <input ref={thumbFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleThumbnailUpload(f, false) }} />
+                <Button size="small" variant="secondary" onClick={() => thumbFileRef.current?.click()} isLoading={thumbUploading}>
+                  {thumbUploading ? "Uploading..." : newMedia.thumbnail_url ? "Change Thumbnail" : "Upload Thumbnail Image"}
+                </Button>
+              </div>
+            </div>
             <div className="flex items-center gap-3">
               <input id="isFeatured" type="checkbox" checked={!!newMedia.is_featured} onChange={(e) => updateNewMedia((p) => ({ ...p, is_featured: e.target.checked }))} />
               <label htmlFor="isFeatured" className="text-sm">Featured Video (show prominently)</label>
@@ -447,6 +497,29 @@ const MediaPage = () => {
             )}
             <Input placeholder="Title (English)" value={editMedia.title || ''} onChange={(e) => setEditMedia((p) => ({ ...p, title: e.target.value }))} />
             <Input placeholder="Title (Arabic)" value={editMedia.title_ar || ''} onChange={(e) => setEditMedia((p) => ({ ...p, title_ar: e.target.value }))} dir="rtl" />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Custom Thumbnail <span className="text-xs text-gray-400 font-normal">(poster image for video)</span>
+              </label>
+              <div className="flex items-center gap-3">
+                {editMedia.thumbnail_url ? (
+                  <div className="w-16 h-12 rounded bg-zinc-800 border border-zinc-700 overflow-hidden flex-shrink-0 relative group">
+                    <img src={editMedia.thumbnail_url} alt="Thumbnail" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setEditMedia(p => ({ ...p, thumbnail_url: null }))}
+                      className="absolute inset-0 bg-black/70 text-red-400 font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : null}
+                <input ref={editThumbFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleThumbnailUpload(f, true) }} />
+                <Button size="small" variant="secondary" onClick={() => editThumbFileRef.current?.click()} isLoading={thumbUploading}>
+                  {thumbUploading ? "Uploading..." : editMedia.thumbnail_url ? "Change Thumbnail" : "Upload Thumbnail Image"}
+                </Button>
+              </div>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 Linked Products <span className="text-xs text-gray-400 font-normal">(shown on right side of video)</span>
