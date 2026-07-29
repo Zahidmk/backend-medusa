@@ -5,109 +5,108 @@ export const AUTHENTICATE = true
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   try {
-    const pgConnection = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
-
+    const productService = req.scope.resolve(Modules.PRODUCT) as any
     const search = (req.query.q as string) || ""
     const idsParam = (req.query.ids as string) || ""
-    const statusParam = (req.query.status as string) || "" // Only filter if explicitly passed (e.g. status=published)
+    const statusParam = req.query.status as string
     const limit = parseInt((req.query.limit as string) || "50", 10)
     const offset = parseInt((req.query.offset as string) || "0", 10)
 
     if (idsParam) {
       const ids = idsParam.split(",").map((i) => i.trim()).filter(Boolean)
-      if (ids.length === 0) {
-        return res.json({ products: [], count: 0 })
+      if (ids.length === 0) return res.json({ products: [], count: 0 })
+
+      let products: any[] = []
+      if (typeof productService.listProducts === "function") {
+        products = await productService.listProducts({ id: ids }, { select: ["id", "title", "handle", "thumbnail", "status"] })
+      } else if (typeof productService.list === "function") {
+        products = await productService.list({ id: ids }, { select: ["id", "title", "handle", "thumbnail", "status"] })
       }
-      const placeholders = ids.map(() => "?").join(", ")
-      const result = await pgConnection.raw(
-        `SELECT DISTINCT ON (p.id)
-                p.id, p.title, p.handle,
-                COALESCE(p.thumbnail, img.url) as thumbnail,
-                p.status
-         FROM product p
-         LEFT JOIN product_image pi ON pi.product_id = p.id
-         LEFT JOIN image img ON img.id = pi.image_id
-         WHERE p.id IN (${placeholders}) AND p.deleted_at IS NULL`,
-        ids
-      )
-      const rows = result.rows || []
-      return res.json({ products: rows, count: rows.length })
+      return res.json({ products: products || [], count: products?.length || 0 })
     }
 
-    const bindings: any[] = []
-    let whereClause = "WHERE p.deleted_at IS NULL"
-
+    const filters: any = {}
     if (statusParam && statusParam !== "all") {
-      bindings.push(statusParam)
-      whereClause += " AND p.status = ?"
+      filters.status = statusParam
     }
-
     if (search) {
-      bindings.push(`%${search}%`)
-      bindings.push(`%${search}%`)
-      whereClause += " AND (p.title ILIKE ? OR p.handle ILIKE ?)"
+      filters.q = search
     }
 
-    const countRes = await pgConnection.raw(
-      `SELECT COUNT(DISTINCT p.id) as total FROM product p ${whereClause}`,
-      bindings
-    )
-    const total = parseInt(countRes.rows?.[0]?.total || "0", 10)
+    let products: any[] = []
+    let count = 0
 
-    const queryBindings = [...bindings, limit, offset]
-    const result = await pgConnection.raw(
-      `SELECT DISTINCT ON (p.id)
-              p.id, p.title, p.handle,
-              COALESCE(p.thumbnail, img.url) as thumbnail,
-              p.status, p.created_at
-       FROM product p
-       LEFT JOIN product_image pi ON pi.product_id = p.id
-       LEFT JOIN image img ON img.id = pi.image_id
-       ${whereClause}
-       ORDER BY p.id, p.created_at DESC
-       LIMIT ? OFFSET ?`,
-      queryBindings
-    )
+    if (typeof productService.listAndCountProducts === "function") {
+      const result = await productService.listAndCountProducts(filters, {
+        select: ["id", "title", "handle", "thumbnail", "status"],
+        take: limit,
+        skip: offset,
+        order: { created_at: "DESC" },
+      })
+      products = result[0] || []
+      count = result[1] || 0
+    } else if (typeof productService.listAndCount === "function") {
+      const result = await productService.listAndCount(filters, {
+        select: ["id", "title", "handle", "thumbnail", "status"],
+        take: limit,
+        skip: offset,
+        order: { created_at: "DESC" },
+      })
+      products = result[0] || []
+      count = result[1] || 0
+    } else {
+      throw new Error("Product service listAndCount method not found")
+    }
 
-    const rows = result.rows || []
-    return res.json({ products: rows, count: total })
+    return res.json({ products, count })
   } catch (e: any) {
-    console.error("GET /admin/products error:", e)
+    console.error("GET /admin/products error via product service, using raw DB fallback:", e?.message)
     try {
       const pgConnection = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
       const search = (req.query.q as string) || ""
+      const idsParam = (req.query.ids as string) || ""
       const statusParam = (req.query.status as string) || ""
       const limit = parseInt((req.query.limit as string) || "50", 10)
+      const offset = parseInt((req.query.offset as string) || "0", 10)
+
+      if (idsParam) {
+        const ids = idsParam.split(",").map((i) => i.trim()).filter(Boolean)
+        if (ids.length === 0) return res.json({ products: [], count: 0 })
+        const placeholders = ids.map(() => "?").join(", ")
+        const resIds = await pgConnection.raw(
+          `SELECT id, title, handle, thumbnail, status FROM product WHERE id IN (${placeholders}) AND deleted_at IS NULL`,
+          ids
+        )
+        return res.json({ products: resIds.rows || [], count: resIds.rows?.length || 0 })
+      }
+
       const bindings: any[] = []
       let where = "WHERE deleted_at IS NULL"
       if (statusParam && statusParam !== "all") {
         bindings.push(statusParam)
-        where += " AND status = ?"
+        where += " AND (status = ? OR status IS NULL)"
       }
       if (search) {
         bindings.push(`%${search}%`)
         bindings.push(`%${search}%`)
         where += " AND (title ILIKE ? OR handle ILIKE ?)"
       }
+
+      const countRes = await pgConnection.raw(`SELECT COUNT(*) as total FROM product ${where}`, bindings)
+      const total = parseInt(countRes.rows?.[0]?.total || "0", 10)
+
       bindings.push(limit)
+      bindings.push(offset)
       const resFallback = await pgConnection.raw(
-        `SELECT id, title, handle, thumbnail, status FROM product ${where} ORDER BY created_at DESC LIMIT ?`,
+        `SELECT id, title, handle, thumbnail, status FROM product ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
         bindings
       )
-      return res.json({ products: resFallback.rows || [], count: resFallback.rows?.length || 0 })
+      return res.json({ products: resFallback.rows || [], count: total })
     } catch (fallbackErr: any) {
-      return res.status(500).json({ message: e?.message || "Failed to fetch products" })
+      return res.status(500).json({ message: fallbackErr?.message || "Failed to fetch products" })
     }
   }
 }
-
-
-// Admin-side route-level validation for product create/update
-// Controlled by env var REQUIRE_PRODUCT_METADATA (string 'true' enables enforcement).
-// When enabled, requests creating products must include at least one of:
-// - tags: non-empty array
-// - collection_id or collection_ids: single or array
-// - categories: non-empty array
 
 function hasMetadata(payload: any) {
   if (!payload || typeof payload !== 'object') return false
@@ -123,13 +122,11 @@ function normalizeImageFields(payload: any) {
 
   const next = { ...payload }
 
-  // Support a few common frontend/admin keys for thumbnail.
   const thumb = next.thumbnail || next.thumbnail_url || next.temp_image || next.image_url
   if (thumb && !next.thumbnail) {
     next.thumbnail = thumb
   }
 
-  // Normalize images into [{ url: string }]
   if (Array.isArray(next.images)) {
     next.images = next.images
       .map((img: any) => {
@@ -143,7 +140,6 @@ function normalizeImageFields(payload: any) {
     next.images = [{ url: next.images }]
   }
 
-  // If we have a thumbnail but no images, include it as first image.
   if (next.thumbnail && (!Array.isArray(next.images) || next.images.length === 0)) {
     next.images = [{ url: next.thumbnail }]
   }
@@ -168,7 +164,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     const productService = req.scope.resolve(Modules.PRODUCT) as any
 
-    // Try common create method names used across Medusa versions/customizations
     let created: any = null
     if (typeof productService.create === 'function') {
       created = await productService.create(body)
@@ -191,16 +186,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 export async function PUT(req: MedusaRequest, res: MedusaResponse) {
   try {
     const body = normalizeImageFields((req.body as any) || {})
-    // id may come from query param (e.g., /admin/products?id=prod_...) or body
     const id = (req.query && (req.query.id as string)) || body?.id
     if (!id) return res.status(400).json({ message: 'Missing product id for update' })
 
-    // NOTE: Don't enforce metadata on updates.
-    // Image-only updates (thumbnail/images) and other partial edits must stay allowed.
-
     const productService = req.scope.resolve(Modules.PRODUCT) as any
 
-    // Try a few common update method names
     let updated: any = null
     if (typeof productService.updateProducts === 'function') {
       updated = await productService.updateProducts(id, body)
