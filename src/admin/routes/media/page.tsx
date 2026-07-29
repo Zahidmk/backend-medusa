@@ -49,7 +49,7 @@ const ProductPicker = ({
 
   const { data, isLoading } = useQuery<{ products: Product[]; count: number }>({
     queryKey: ["admin-products-picker", search],
-    queryFn: () => sdk.client.fetch(`/admin/products?q=${encodeURIComponent(search)}&limit=30`, { method: "GET" }),
+    queryFn: () => sdk.client.fetch(`/admin/products?q=${encodeURIComponent(search)}&status=published&limit=100`, { method: "GET" }),
     staleTime: 30_000,
   })
   const products = data?.products ?? []
@@ -416,7 +416,7 @@ const MediaPage = () => {
             <Input placeholder="Title (Arabic)" value={newMedia.title_ar || ''} onChange={(e) => updateNewMedia((p) => ({ ...p, title_ar: e.target.value }))} dir="rtl" />
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Linked Products <span className="text-xs text-gray-400 font-normal">(shown on right side of video)</span>
+                Linked Products <span className="text-xs text-gray-400 font-normal">(shown on left side of video)</span>
               </label>
               <ProductPicker selectedIds={newMedia.product_ids || []} onChange={(ids) => updateNewMedia((p) => ({ ...p, product_ids: ids }))} />
             </div>

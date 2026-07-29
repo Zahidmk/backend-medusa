@@ -1,7 +1,106 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { Modules } from "@medusajs/framework/utils"
+import { Modules, ContainerRegistrationKeys } from "@medusajs/framework/utils"
 
 export const AUTHENTICATE = true
+
+export async function GET(req: MedusaRequest, res: MedusaResponse) {
+  try {
+    const pgConnection = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
+
+    const search = (req.query.q as string) || ""
+    const idsParam = (req.query.ids as string) || ""
+    const statusParam = (req.query.status as string) || "published" // Default to published only
+    const limit = parseInt((req.query.limit as string) || "50", 10)
+    const offset = parseInt((req.query.offset as string) || "0", 10)
+
+    if (idsParam) {
+      const ids = idsParam.split(",").map((i) => i.trim()).filter(Boolean)
+      if (ids.length === 0) {
+        return res.json({ products: [], count: 0 })
+      }
+      const placeholders = ids.map(() => "?").join(", ")
+      const result = await pgConnection.raw(
+        `SELECT DISTINCT ON (p.id)
+                p.id, p.title, p.handle,
+                COALESCE(p.thumbnail, img.url) as thumbnail,
+                p.status
+         FROM product p
+         LEFT JOIN product_image pi ON pi.product_id = p.id
+         LEFT JOIN image img ON img.id = pi.image_id
+         WHERE p.id IN (${placeholders}) AND p.deleted_at IS NULL`,
+        ids
+      )
+      const rows = result.rows || []
+      return res.json({ products: rows, count: rows.length })
+    }
+
+    const bindings: any[] = []
+    let whereClause = "WHERE p.deleted_at IS NULL"
+
+    if (statusParam && statusParam !== "all") {
+      bindings.push(statusParam)
+      whereClause += " AND p.status = ?"
+    }
+
+    if (search) {
+      bindings.push(`%${search}%`)
+      bindings.push(`%${search}%`)
+      whereClause += " AND (p.title ILIKE ? OR p.handle ILIKE ?)"
+    }
+
+    const countRes = await pgConnection.raw(
+      `SELECT COUNT(DISTINCT p.id) as total FROM product p ${whereClause}`,
+      bindings
+    )
+    const total = parseInt(countRes.rows?.[0]?.total || "0", 10)
+
+    const queryBindings = [...bindings, limit, offset]
+    const result = await pgConnection.raw(
+      `SELECT DISTINCT ON (p.id)
+              p.id, p.title, p.handle,
+              COALESCE(p.thumbnail, img.url) as thumbnail,
+              p.status, p.created_at
+       FROM product p
+       LEFT JOIN product_image pi ON pi.product_id = p.id
+       LEFT JOIN image img ON img.id = pi.image_id
+       ${whereClause}
+       ORDER BY p.id, p.created_at DESC
+       LIMIT ? OFFSET ?`,
+      queryBindings
+    )
+
+    const rows = result.rows || []
+    return res.json({ products: rows, count: total })
+  } catch (e: any) {
+    console.error("GET /admin/products error:", e)
+    try {
+      const pgConnection = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
+      const search = (req.query.q as string) || ""
+      const statusParam = (req.query.status as string) || "published"
+      const limit = parseInt((req.query.limit as string) || "50", 10)
+      const bindings: any[] = []
+      let where = "WHERE deleted_at IS NULL"
+      if (statusParam !== "all") {
+        bindings.push(statusParam)
+        where += " AND status = ?"
+      }
+      if (search) {
+        bindings.push(`%${search}%`)
+        bindings.push(`%${search}%`)
+        where += " AND (title ILIKE ? OR handle ILIKE ?)"
+      }
+      bindings.push(limit)
+      const resFallback = await pgConnection.raw(
+        `SELECT id, title, handle, thumbnail, status FROM product ${where} ORDER BY created_at DESC LIMIT ?`,
+        bindings
+      )
+      return res.json({ products: resFallback.rows || [], count: resFallback.rows?.length || 0 })
+    } catch (fallbackErr: any) {
+      return res.status(500).json({ message: e?.message || "Failed to fetch products" })
+    }
+  }
+}
+
 
 // Admin-side route-level validation for product create/update
 // Controlled by env var REQUIRE_PRODUCT_METADATA (string 'true' enables enforcement).
