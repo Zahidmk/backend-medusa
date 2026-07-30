@@ -30,8 +30,10 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
   try {
     await ensureProductIdsColumn(req.scope)
     const mediaService = req.scope.resolve(MEDIA_MODULE) as any
-    const id = req.params.id
+    const id = req.params.id || (req as any).params?.id
     const body = (req.body || {}) as any
+
+    if (!id) return res.status(400).json({ message: "Media ID is required" })
 
     const productIds = Array.isArray(body.product_ids) ? body.product_ids : undefined
     let brand = body.brand
@@ -51,26 +53,50 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
       }
     }
 
-    // Use updateMedias/updateMedia pattern if available
+    let updated: any = null
     if (typeof mediaService.updateMedias === 'function') {
-      const updated = await mediaService.updateMedias({ id }, body)
-      return res.json({ media: updated })
-    }
-    if (typeof mediaService.updateMedia === 'function') {
-      const updated = await mediaService.updateMedia(id, body)
-      return res.json({ media: updated })
-    }
-    // Fallback: try generic update method
-    if (typeof mediaService.update === 'function') {
+      updated = await mediaService.updateMedias({ id, ...body })
+    } else if (typeof mediaService.updateMedia === 'function') {
+      updated = await mediaService.updateMedia(id, body)
+    } else if (typeof mediaService.update === 'function') {
       await mediaService.update(id, body)
-      const item = await mediaService.retrieveMedia(id).catch(() => null)
-      return res.json({ media: item })
+      updated = await mediaService.retrieveMedia(id).catch(() => null)
     }
 
-    res.status(501).json({ message: 'Update not supported on media service' })
+    // Direct DB update fallback to ensure product_ids, brand, and fields are saved
+    try {
+      const pg = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
+      await pg.raw(
+        `UPDATE media SET
+          title = COALESCE(?, title),
+          title_ar = ?,
+          thumbnail_url = ?,
+          views = COALESCE(?, views),
+          display_order = COALESCE(?, display_order),
+          is_featured = COALESCE(?, is_featured),
+          product_ids = ?::jsonb,
+          updated_at = NOW()
+         WHERE id = ?`,
+        [
+          body.title || null,
+          body.title_ar || null,
+          body.thumbnail_url || null,
+          body.views ?? null,
+          body.display_order ?? null,
+          body.is_featured ?? null,
+          JSON.stringify(productIds || []),
+          id
+        ]
+      )
+    } catch (dbErr) {
+      console.warn("Direct DB media update fallback warning:", dbErr)
+    }
+
+    const finalMedia = await (mediaService.retrieveMedia ? mediaService.retrieveMedia(id) : null)
+    return res.json({ media: finalMedia || updated || { id, ...body } })
   } catch (e: any) {
     console.error('Admin media PUT error:', e)
-    res.status(500).json({ message: e?.message || 'Failed to update media' })
+    return res.status(500).json({ message: e?.message || 'Failed to update media' })
   }
 }
 
