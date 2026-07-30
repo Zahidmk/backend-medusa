@@ -49,7 +49,13 @@ const ProductPicker = ({
 
   const { data, isLoading } = useQuery<{ products: Product[]; count: number }>({
     queryKey: ["admin-products-picker", search],
-    queryFn: () => sdk.client.fetch(`/admin/products?q=${encodeURIComponent(search)}&status=all&limit=100`, { method: "GET" }),
+    queryFn: async () => {
+      try {
+        return await sdk.client.fetch(`/admin/custom/products?q=${encodeURIComponent(search)}&limit=100`, { method: "GET" })
+      } catch (err) {
+        return await sdk.client.fetch(`/admin/products?q=${encodeURIComponent(search)}&limit=100`, { method: "GET" })
+      }
+    },
     staleTime: 30_000,
   })
   const products = data?.products ?? []
@@ -61,7 +67,13 @@ const ProductPicker = ({
 
   const { data: missingData } = useQuery<{ products: Product[] }>({
     queryKey: ["admin-products-missing", missingSelectedIds.join(",")],
-    queryFn: () => sdk.client.fetch(`/admin/products?ids=${encodeURIComponent(missingSelectedIds.join(","))}`, { method: "GET" }),
+    queryFn: async () => {
+      try {
+        return await sdk.client.fetch(`/admin/custom/products?ids=${encodeURIComponent(missingSelectedIds.join(","))}`, { method: "GET" })
+      } catch (err) {
+        return await sdk.client.fetch(`/admin/products?ids=${encodeURIComponent(missingSelectedIds.join(","))}`, { method: "GET" })
+      }
+    },
     enabled: missingSelectedIds.length > 0,
     staleTime: 60_000,
   })
