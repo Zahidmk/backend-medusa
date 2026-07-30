@@ -63,7 +63,6 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     return res.status(500).json({ message: e?.message || "Failed to fetch products" })
   }
 }
-}
 
 function hasMetadata(payload: any) {
   if (!payload || typeof payload !== 'object') return false
