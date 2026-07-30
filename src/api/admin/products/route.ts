@@ -5,62 +5,106 @@ export const AUTHENTICATE = true
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   try {
-    const pgConnection = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
-    const search = ((req.query.q as string) || "").trim()
-    const idsParam = ((req.query.ids as string) || "").trim()
-    const statusParam = ((req.query.status as string) || "").trim()
+    const productService = req.scope.resolve(Modules.PRODUCT) as any
+    const search = (req.query.q as string) || ""
+    const idsParam = (req.query.ids as string) || ""
+    const statusParam = req.query.status as string
     const limit = parseInt((req.query.limit as string) || "50", 10)
     const offset = parseInt((req.query.offset as string) || "0", 10)
 
     if (idsParam) {
       const ids = idsParam.split(",").map((i) => i.trim()).filter(Boolean)
       if (ids.length === 0) return res.json({ products: [], count: 0 })
-      const placeholders = ids.map(() => "?").join(", ")
-      const resIds = await pgConnection.raw(
-        `SELECT p.id, p.title, p.handle,
-                COALESCE(p.thumbnail, (SELECT url FROM product_image pi WHERE pi.product_id = p.id AND pi.deleted_at IS NULL ORDER BY pi.rank ASC LIMIT 1)) as thumbnail,
-                p.status
-         FROM product p
-         WHERE p.id IN (${placeholders}) AND p.deleted_at IS NULL`,
-        ids
-      )
-      return res.json({ products: resIds.rows || [], count: resIds.rows?.length || 0 })
+
+      let products: any[] = []
+      if (typeof productService.listProducts === "function") {
+        products = await productService.listProducts({ id: ids }, { select: ["id", "title", "handle", "thumbnail", "status"] })
+      } else if (typeof productService.list === "function") {
+        products = await productService.list({ id: ids }, { select: ["id", "title", "handle", "thumbnail", "status"] })
+      }
+      return res.json({ products: products || [], count: products?.length || 0 })
     }
 
-    const bindings: any[] = []
-    let where = "WHERE p.deleted_at IS NULL"
-
+    const filters: any = {}
     if (statusParam && statusParam !== "all") {
-      bindings.push(statusParam)
-      where += " AND (p.status = ? OR p.status IS NULL)"
+      filters.status = statusParam
     }
-
     if (search) {
-      bindings.push(`%${search}%`)
-      bindings.push(`%${search}%`)
-      where += " AND (p.title ILIKE ? OR p.handle ILIKE ?)"
+      filters.q = search
     }
 
-    const countRes = await pgConnection.raw(`SELECT COUNT(*) as total FROM product p ${where}`, bindings)
-    const total = parseInt(countRes.rows?.[0]?.total || "0", 10)
+    let products: any[] = []
+    let count = 0
 
-    bindings.push(limit)
-    bindings.push(offset)
-    const resProducts = await pgConnection.raw(
-      `SELECT p.id, p.title, p.handle,
-              COALESCE(p.thumbnail, (SELECT url FROM product_image pi WHERE pi.product_id = p.id AND pi.deleted_at IS NULL ORDER BY pi.rank ASC LIMIT 1)) as thumbnail,
-              p.status
-       FROM product p
-       ${where}
-       ORDER BY p.created_at DESC
-       LIMIT ? OFFSET ?`,
-      bindings
-    )
+    if (typeof productService.listAndCountProducts === "function") {
+      const result = await productService.listAndCountProducts(filters, {
+        select: ["id", "title", "handle", "thumbnail", "status"],
+        take: limit,
+        skip: offset,
+        order: { created_at: "DESC" },
+      })
+      products = result[0] || []
+      count = result[1] || 0
+    } else if (typeof productService.listAndCount === "function") {
+      const result = await productService.listAndCount(filters, {
+        select: ["id", "title", "handle", "thumbnail", "status"],
+        take: limit,
+        skip: offset,
+        order: { created_at: "DESC" },
+      })
+      products = result[0] || []
+      count = result[1] || 0
+    } else {
+      throw new Error("Product service listAndCount method not found")
+    }
 
-    return res.json({ products: resProducts.rows || [], count: total })
+    return res.json({ products, count })
   } catch (e: any) {
-    console.error("GET /admin/products error:", e?.message)
-    return res.status(500).json({ message: e?.message || "Failed to fetch products" })
+    console.error("GET /admin/products error via product service, using raw DB fallback:", e?.message)
+    try {
+      const pgConnection = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
+      const search = (req.query.q as string) || ""
+      const idsParam = (req.query.ids as string) || ""
+      const statusParam = (req.query.status as string) || ""
+      const limit = parseInt((req.query.limit as string) || "50", 10)
+      const offset = parseInt((req.query.offset as string) || "0", 10)
+
+      if (idsParam) {
+        const ids = idsParam.split(",").map((i) => i.trim()).filter(Boolean)
+        if (ids.length === 0) return res.json({ products: [], count: 0 })
+        const placeholders = ids.map(() => "?").join(", ")
+        const resIds = await pgConnection.raw(
+          `SELECT id, title, handle, thumbnail, status FROM product WHERE id IN (${placeholders}) AND deleted_at IS NULL`,
+          ids
+        )
+        return res.json({ products: resIds.rows || [], count: resIds.rows?.length || 0 })
+      }
+
+      const bindings: any[] = []
+      let where = "WHERE deleted_at IS NULL"
+      if (statusParam && statusParam !== "all") {
+        bindings.push(statusParam)
+        where += " AND (status = ? OR status IS NULL)"
+      }
+      if (search) {
+        bindings.push(`%${search}%`)
+        bindings.push(`%${search}%`)
+        where += " AND (title ILIKE ? OR handle ILIKE ?)"
+      }
+
+      const countRes = await pgConnection.raw(`SELECT COUNT(*) as total FROM product ${where}`, bindings)
+      const total = parseInt(countRes.rows?.[0]?.total || "0", 10)
+
+      bindings.push(limit)
+      bindings.push(offset)
+      const resFallback = await pgConnection.raw(
+        `SELECT id, title, handle, thumbnail, status FROM product ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+        bindings
+      )
+      return res.json({ products: resFallback.rows || [], count: total })
+    } catch (fallbackErr: any) {
+      return res.status(500).json({ message: fallbackErr?.message || "Failed to fetch products" })
+    }
   }
 }
 
