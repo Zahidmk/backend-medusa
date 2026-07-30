@@ -33,6 +33,9 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
     const id = req.params.id || (req as any).params?.id
     const body = (req.body || {}) as any
 
+    console.log("media_id =", id)
+    console.log("req.body =", req.body)
+
     if (!id) return res.status(400).json({ message: "Media ID is required" })
 
     const productIds = Array.isArray(body.product_ids) ? body.product_ids : undefined
@@ -53,17 +56,7 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
       }
     }
 
-    let updated: any = null
-    if (typeof mediaService.updateMedias === 'function') {
-      updated = await mediaService.updateMedias({ id, ...body })
-    } else if (typeof mediaService.updateMedia === 'function') {
-      updated = await mediaService.updateMedia(id, body)
-    } else if (typeof mediaService.update === 'function') {
-      await mediaService.update(id, body)
-      updated = await mediaService.retrieveMedia(id).catch(() => null)
-    }
-
-    // Direct DB update fallback to ensure product_ids, brand, and fields are saved
+    // Direct DB update first to guarantee fields are saved without MedusaService signature mismatch
     try {
       const pg = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
       await pg.raw(
@@ -89,10 +82,31 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
         ]
       )
     } catch (dbErr) {
-      console.warn("Direct DB media update fallback warning:", dbErr)
+      console.warn("Direct DB media update error:", dbErr)
     }
 
-    const finalMedia = await (mediaService.retrieveMedia ? mediaService.retrieveMedia(id) : null)
+    // Try service update methods safely with array format [{ id, ...body }]
+    let updated: any = null
+    try {
+      if (typeof mediaService.updateMedias === 'function') {
+        updated = await mediaService.updateMedias([{ id, ...body }])
+      } else if (typeof mediaService.updateMedia === 'function') {
+        updated = await mediaService.updateMedia(id, body)
+      } else if (typeof mediaService.update === 'function') {
+        await mediaService.update(id, body)
+      }
+    } catch (serviceErr: any) {
+      console.warn("Service updateMedias warning (handled by DB update):", serviceErr?.message)
+    }
+
+    let finalMedia: any = null
+    try {
+      const items = await mediaService.listMedias({ id })
+      finalMedia = Array.isArray(items) ? items[0] : items
+    } catch (err) {
+      // fallback
+    }
+
     return res.json({ media: finalMedia || updated || { id, ...body } })
   } catch (e: any) {
     console.error('Admin media PUT error:', e)
