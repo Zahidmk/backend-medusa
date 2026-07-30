@@ -67,7 +67,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         const placeholders = allProductIds.map(() => '?').join(', ')
         const result = await pgConnection.raw(
           `SELECT DISTINCT ON (p.id)
-                  p.id, p.title, p.handle, p.thumbnail,
+                  p.id, p.title, p.handle,
+                  COALESCE(p.thumbnail, (SELECT url FROM product_image pi WHERE pi.product_id = p.id AND pi.deleted_at IS NULL ORDER BY pi.rank ASC LIMIT 1)) as thumbnail,
                   pr.amount as calculated_price
            FROM product p
            LEFT JOIN product_variant pvar ON pvar.product_id = p.id AND pvar.deleted_at IS NULL
@@ -82,7 +83,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
             id: row.id,
             title: row.title,
             handle: row.handle || null,
-            thumbnail: row.thumbnail || null,
+            thumbnail: makeAbsolute(row.thumbnail || null),
             price: row.calculated_price ? (row.calculated_price / 1000).toFixed(3) : null,
           })
         }

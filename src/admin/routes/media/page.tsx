@@ -49,7 +49,7 @@ const ProductPicker = ({
 
   const { data, isLoading } = useQuery<{ products: Product[]; count: number }>({
     queryKey: ["admin-products-picker", search],
-    queryFn: () => sdk.client.fetch(`/admin/products?q=${encodeURIComponent(search)}&status=published&limit=100`, { method: "GET" }),
+    queryFn: () => sdk.client.fetch(`/admin/products?q=${encodeURIComponent(search)}&status=all&limit=100`, { method: "GET" }),
     staleTime: 30_000,
   })
   const products = data?.products ?? []
@@ -111,6 +111,7 @@ const ProductPicker = ({
         {!isLoading && products.length === 0 && <div className="p-3 text-xs text-center" style={{ color: "#a1a1aa" }}>No products found</div>}
         {products.map((p) => {
           const checked = selectedIds.includes(p.id)
+          const isPublished = p.status === "published"
           return (
             <button
               key={p.id}
@@ -131,9 +132,14 @@ const ProductPicker = ({
                   <div className="w-full h-full flex items-center justify-center text-[10px]" style={{ color: "#71717a", backgroundColor: "#27272a" }}>No img</div>
                 )}
               </div>
-              <span className={`text-xs flex-1 truncate font-medium`} style={{ color: checked ? "#f3e8ff" : "#ffffff" }}>
-                {p.title}
-              </span>
+              <div className="min-w-0 flex-1 flex flex-col justify-center">
+                <span className="text-xs truncate font-medium" style={{ color: checked ? "#f3e8ff" : "#ffffff" }}>
+                  {p.title}
+                </span>
+                <span className="text-[10px]" style={{ color: isPublished ? "#4ade80" : "#a1a1aa" }}>
+                  {isPublished ? "Published" : (p.status || "Draft")}
+                </span>
+              </div>
               {checked && <span className="text-sm font-bold ml-auto" style={{ color: "#a78bfa" }}>✓</span>}
             </button>
           )

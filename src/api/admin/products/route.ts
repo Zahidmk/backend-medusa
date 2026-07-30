@@ -30,7 +30,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       filters.status = statusParam
     }
     if (search) {
-      filters.q = search
+      filters.title = { $ilike: `%${search}%` }
     }
 
     let products: any[] = []
@@ -74,7 +74,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         if (ids.length === 0) return res.json({ products: [], count: 0 })
         const placeholders = ids.map(() => "?").join(", ")
         const resIds = await pgConnection.raw(
-          `SELECT id, title, handle, thumbnail, status FROM product WHERE id IN (${placeholders}) AND deleted_at IS NULL`,
+          `SELECT p.id, p.title, p.handle, COALESCE(p.thumbnail, (SELECT url FROM product_image pi WHERE pi.product_id = p.id AND pi.deleted_at IS NULL ORDER BY pi.rank ASC LIMIT 1)) as thumbnail, p.status FROM product p WHERE p.id IN (${placeholders}) AND p.deleted_at IS NULL`,
           ids
         )
         return res.json({ products: resIds.rows || [], count: resIds.rows?.length || 0 })
@@ -98,7 +98,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       bindings.push(limit)
       bindings.push(offset)
       const resFallback = await pgConnection.raw(
-        `SELECT id, title, handle, thumbnail, status FROM product ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+        `SELECT p.id, p.title, p.handle, COALESCE(p.thumbnail, (SELECT url FROM product_image pi WHERE pi.product_id = p.id AND pi.deleted_at IS NULL ORDER BY pi.rank ASC LIMIT 1)) as thumbnail, p.status FROM product p ${where} ORDER BY p.created_at DESC LIMIT ? OFFSET ?`,
         bindings
       )
       return res.json({ products: resFallback.rows || [], count: total })
