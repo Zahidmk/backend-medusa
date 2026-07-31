@@ -9,14 +9,20 @@ export const AUTHENTICATE = false
 
 function parseProductIds(raw: any): string[] {
   if (!raw) return []
-  if (Array.isArray(raw)) return raw.filter(Boolean)
+  if (Array.isArray(raw)) return raw.map(x => String(x).trim()).filter(Boolean)
+  if (typeof raw === 'number') return [String(raw)]
   if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed) return []
     try {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) return parsed.filter(Boolean)
-      if (typeof parsed === 'string') return [parsed]
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) return parsed.map(x => String(x).trim()).filter(Boolean)
+      if (typeof parsed === 'string' || typeof parsed === 'number') return [String(parsed).trim()]
     } catch (e) {
-      if (raw.trim().startsWith('01') || raw.trim().startsWith('prod_')) return [raw.trim()]
+      if (trimmed.includes(',')) {
+        return trimmed.split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+      }
+      return [trimmed.replace(/^['"]|['"]$/g, '')]
     }
   }
   return []
@@ -81,10 +87,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
         const resProds = await pgConnection.raw(
           `SELECT p.id, p.title, p.handle,
+                  (p.metadata->>'odoo_template_id') as odoo_id,
                   COALESCE(p.thumbnail, (SELECT url FROM product_image pi WHERE pi.product_id = p.id AND pi.deleted_at IS NULL ORDER BY pi.rank ASC LIMIT 1)) as thumbnail
            FROM product p
-           WHERE p.id IN (${placeholders}) AND p.deleted_at IS NULL`,
-          allProductIds
+           WHERE (p.id IN (${placeholders}) OR p.handle IN (${placeholders}) OR (p.metadata->>'odoo_template_id') IN (${placeholders})) AND p.deleted_at IS NULL`,
+          [...allProductIds, ...allProductIds, ...allProductIds]
         )
 
         const priceMap = new Map<string, string>()
@@ -94,9 +101,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
              FROM product_variant pvar
              JOIN product_variant_price_set pvps ON pvps.variant_id = pvar.id
              JOIN price pr ON pr.price_set_id = pvps.price_set_id
-             WHERE pvar.product_id IN (${placeholders}) AND pvar.deleted_at IS NULL
+             WHERE pvar.product_id IN (
+               SELECT id FROM product WHERE (id IN (${placeholders}) OR handle IN (${placeholders}) OR (metadata->>'odoo_template_id') IN (${placeholders})) AND deleted_at IS NULL
+             ) AND pvar.deleted_at IS NULL
              ORDER BY pr.amount ASC`,
-            allProductIds
+            [...allProductIds, ...allProductIds, ...allProductIds]
           )
           for (const row of resPrices.rows || []) {
             if (!priceMap.has(row.product_id) && row.amount != null) {
@@ -111,14 +120,17 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
         for (const row of resProds.rows || []) {
           const pPrice = priceMap.get(row.id) || null
-          productMap.set(row.id, {
+          const prodObj = {
             id: row.id,
             title: row.title,
             handle: row.handle || row.id,
             thumbnail: makeAbsolute(row.thumbnail || null),
             price: pPrice,
             calculated_price: pPrice
-          })
+          }
+          if (row.id) productMap.set(row.id, prodObj)
+          if (row.handle) productMap.set(row.handle, prodObj)
+          if (row.odoo_id) productMap.set(row.odoo_id, prodObj)
         }
       } catch (err) {
         console.error('Failed to fetch products for media:', err)
