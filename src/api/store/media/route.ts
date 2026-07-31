@@ -7,6 +7,21 @@ import { Knex } from "knex"
 
 export const AUTHENTICATE = false
 
+function parseProductIds(raw: any): string[] {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw.filter(Boolean)
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parsed.filter(Boolean)
+      if (typeof parsed === 'string') return [parsed]
+    } catch (e) {
+      if (raw.trim().startsWith('01') || raw.trim().startsWith('prod_')) return [raw.trim()]
+    }
+  }
+  return []
+}
+
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   try {
     const mediaService = req.scope.resolve(MEDIA_MODULE) as any
@@ -51,40 +66,58 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     // Collect all product IDs across all media items to batch-fetch them
     const allProductIds: string[] = []
     for (const m of items) {
-      const pids = Array.isArray(m.product_ids) ? m.product_ids : []
+      const pids = parseProductIds(m.product_ids)
       for (const pid of pids) {
         if (pid && !allProductIds.includes(pid)) allProductIds.push(pid)
       }
     }
 
     // Batch-fetch products from the DB using raw SQL for performance
-    // Uses Medusa v2 pricing tables: price + product_variant_price_set
     const productMap = new Map<string, any>()
     if (allProductIds.length > 0) {
       try {
         const pgConnection: Knex = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION)
-        // Knex raw() uses ? placeholders (not $1,$2), and bindings must be wrapped in an object {bindings:[]}
         const placeholders = allProductIds.map(() => '?').join(', ')
-        const result = await pgConnection.raw(
-          `SELECT DISTINCT ON (p.id)
-                  p.id, p.title, p.handle,
-                  COALESCE(p.thumbnail, (SELECT url FROM product_image pi WHERE pi.product_id = p.id AND pi.deleted_at IS NULL ORDER BY pi.rank ASC LIMIT 1)) as thumbnail,
-                  pr.amount as calculated_price
+
+        const resProds = await pgConnection.raw(
+          `SELECT p.id, p.title, p.handle,
+                  COALESCE(p.thumbnail, (SELECT url FROM product_image pi WHERE pi.product_id = p.id AND pi.deleted_at IS NULL ORDER BY pi.rank ASC LIMIT 1)) as thumbnail
            FROM product p
-           LEFT JOIN product_variant pvar ON pvar.product_id = p.id AND pvar.deleted_at IS NULL
-           LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pvar.id
-           LEFT JOIN price pr ON pr.price_set_id = pvps.price_set_id
-           WHERE p.id IN (${placeholders}) AND p.deleted_at IS NULL
-           ORDER BY p.id, pr.amount ASC`,
+           WHERE p.id IN (${placeholders}) AND p.deleted_at IS NULL`,
           allProductIds
         )
-        for (const row of result.rows) {
+
+        const priceMap = new Map<string, string>()
+        try {
+          const resPrices = await pgConnection.raw(
+            `SELECT pvar.product_id, pr.amount
+             FROM product_variant pvar
+             JOIN product_variant_price_set pvps ON pvps.variant_id = pvar.id
+             JOIN price pr ON pr.price_set_id = pvps.price_set_id
+             WHERE pvar.product_id IN (${placeholders}) AND pvar.deleted_at IS NULL
+             ORDER BY pr.amount ASC`,
+            allProductIds
+          )
+          for (const row of resPrices.rows || []) {
+            if (!priceMap.has(row.product_id) && row.amount != null) {
+              const amt = parseFloat(row.amount)
+              const formatted = amt > 100 ? (amt / 1000).toFixed(3) : amt.toFixed(3)
+              priceMap.set(row.product_id, formatted)
+            }
+          }
+        } catch (priceErr) {
+          console.warn("Price fetch warning for media products:", priceErr)
+        }
+
+        for (const row of resProds.rows || []) {
+          const pPrice = priceMap.get(row.id) || null
           productMap.set(row.id, {
             id: row.id,
             title: row.title,
-            handle: row.handle || null,
+            handle: row.handle || row.id,
             thumbnail: makeAbsolute(row.thumbnail || null),
-            price: row.calculated_price ? (row.calculated_price / 1000).toFixed(3) : null,
+            price: pPrice,
+            calculated_price: pPrice
           })
         }
       } catch (err) {
@@ -94,7 +127,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     const media = items.map((m: any) => {
       const brandInfo = m.brand ? brandLogoMap.get(m.brand) : null
-      const pids = Array.isArray(m.product_ids) ? m.product_ids : []
+      const pids = parseProductIds(m.product_ids)
       const related_products = pids.map((pid: string) => productMap.get(pid)).filter(Boolean)
 
       return {
