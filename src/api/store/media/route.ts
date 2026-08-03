@@ -166,12 +166,14 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       const brandInfo = m.brand ? brandLogoMap.get(m.brand) : null
       const pids = parseProductIds(m.product_ids)
       const related_products = pids.map((pid: string) => productMap.get(pid)).filter(Boolean)
+      
+      const debugInfo = JSON.stringify({ raw_pids: m.product_ids, pids, allIds: allProductIds, mapHas: pids.map(p => productMap.has(p)) })
 
       return {
         id: m.id,
         url: makeAbsolute(m.url || null),
         mime_type: m.mime_type || null,
-        title: m.title || null,
+        title: (m.title || null) + " | DBG: " + debugInfo,
         title_ar: m.title_ar || null,
         alt_text: m.alt_text || null,
         thumbnail_url: makeAbsolute(m.thumbnail_url || null),
