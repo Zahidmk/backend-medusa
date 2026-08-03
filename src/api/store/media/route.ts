@@ -47,6 +47,24 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       count = c || 0
     }
 
+    // Force-fetch product_ids directly from database to bypass any ORM caching/mapping issues
+    try {
+      const pgConnection: Knex = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION)
+      const allMediaIds = items.map((m: any) => m.id)
+      if (allMediaIds.length > 0) {
+        const ph = allMediaIds.map(() => '?').join(',')
+        const rawMedia = await pgConnection.raw(`SELECT id, product_ids FROM media WHERE id IN (${ph})`, allMediaIds)
+        for (const row of rawMedia.rows || []) {
+          const item = items.find((m: any) => m.id === row.id)
+          if (item && row.product_ids) {
+            item.product_ids = row.product_ids
+          }
+        }
+      }
+    } catch (dbErr) {
+      console.warn("Could not fetch raw product_ids:", dbErr)
+    }
+
     // Build a brand logo map keyed by brand name for O(1) lookup per media item
     const brandService = req.scope.resolve<BrandService>(BRAND_MODULE)
     const [allBrands] = await brandService.listAndCountBrands({}, { take: 200 })
