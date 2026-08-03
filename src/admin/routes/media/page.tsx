@@ -197,8 +197,9 @@ const MediaPage = () => {
   const [submitting, setSubmitting] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [thumbUploading, setThumbUploading] = useState(false)
-  const [progress, setProgress] = useState(0)
   const [message, setMessage] = useState<string | null>(null)
+  const [progress, setProgress] = useState(0)
+  const [youtubeUrlInput, setYoutubeUrlInput] = useState('')
   const fileRef = useRef<HTMLInputElement | null>(null)
   const thumbFileRef = useRef<HTMLInputElement | null>(null)
   const editThumbFileRef = useRef<HTMLInputElement | null>(null)
@@ -250,6 +251,46 @@ const MediaPage = () => {
       alert(err?.message || 'Thumbnail upload failed')
     } finally {
       setThumbUploading(false)
+    }
+  }
+
+  const handleSaveYouTube = async () => {
+    if (!youtubeUrlInput) return
+    setSubmitting(true)
+    setMessage('Saving YouTube link…')
+    try {
+      const snap = newMediaRef.current
+      const payload: any = {
+        url: youtubeUrlInput,
+        title: snap.title || 'YouTube Video',
+        title_ar: snap.title_ar || null,
+        thumbnail_url: snap.thumbnail_url || null,
+        mime_type: 'video/youtube',
+        views: snap.views || 0,
+        display_order: snap.display_order || 0,
+        is_featured: snap.is_featured || false,
+        product_ids: snap.product_ids || [],
+      }
+      const res = await fetch('/admin/media', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '')
+        throw new Error(`Save failed (${res.status}): ${errText}`)
+      }
+      setMessage('✅ Media created successfully!')
+      setOpenCreate(false)
+      newMediaRef.current = {}
+      setNewMedia({})
+      setYoutubeUrlInput('')
+      await refetch()
+    } catch (e: any) {
+      setMessage(`❌ ${e?.message || 'Save failed'}`)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -480,6 +521,19 @@ const MediaPage = () => {
                   {uploading ? `Uploading ${progress}%…` : submitting ? 'Saving…' : 'Select File'}
                 </Button>
               </div>
+              <div className="flex items-center my-4">
+                <div className="flex-1 border-t border-gray-200"></div>
+                <span className="mx-4 text-sm text-gray-400">OR</span>
+                <div className="flex-1 border-t border-gray-200"></div>
+              </div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Link a YouTube Video <span className="text-xs text-gray-400 font-normal">(saves automatically)</span>
+              </label>
+              <div className="flex gap-2">
+                <Input placeholder="https://youtube.com/watch?v=..." value={youtubeUrlInput} onChange={(e) => setYoutubeUrlInput(e.target.value)} />
+                <Button onClick={handleSaveYouTube} isLoading={submitting} disabled={!youtubeUrlInput}>Save Link</Button>
+              </div>
+
               {message && (
                 <div className={`mt-2 text-sm px-3 py-2 rounded ${message.includes('❌') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
                   {message}
@@ -505,16 +559,24 @@ const MediaPage = () => {
         <Drawer.Body>
           <div className="flex flex-col gap-4">
             {editMedia.url && (
-              <div className="flex justify-center bg-gray-50 rounded-lg p-3 border border-gray-200">
-                {editMedia.mime_type?.startsWith('video') ? (
-                  <video src={editMedia.url} poster={editMedia.thumbnail_url || undefined} className="max-h-40 rounded" controls />
-                ) : (
-                  <img src={editMedia.url} className="max-h-40 object-contain rounded" />
-                )}
+              <div className="flex flex-col gap-2 bg-gray-50 rounded-lg p-3 border border-gray-200">
+                <div className="flex justify-center">
+                  {editMedia.mime_type?.startsWith('video') && !editMedia.mime_type?.includes('youtube') ? (
+                    <video src={editMedia.url} poster={editMedia.thumbnail_url || undefined} className="max-h-40 rounded" controls />
+                  ) : editMedia.mime_type?.includes('youtube') || editMedia.url.includes('youtube.com') || editMedia.url.includes('youtu.be') ? (
+                    <div className="max-h-40 w-full flex items-center justify-center text-red-500 font-bold bg-gray-200 rounded">
+                      YouTube Video
+                    </div>
+                  ) : (
+                    <img src={editMedia.url} className="max-h-40 object-contain rounded" />
+                  )}
+                </div>
+                <div className="text-xs text-gray-500 break-all">{editMedia.url}</div>
               </div>
             )}
             <Input placeholder="Title (English)" value={editMedia.title || ''} onChange={(e) => setEditMedia((p) => ({ ...p, title: e.target.value }))} />
             <Input placeholder="Title (Arabic)" value={editMedia.title_ar || ''} onChange={(e) => setEditMedia((p) => ({ ...p, title_ar: e.target.value }))} dir="rtl" />
+            <Input placeholder="Media URL (e.g., YouTube link or hosted video)" value={editMedia.url || ''} onChange={(e) => setEditMedia((p) => ({ ...p, url: e.target.value }))} />
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 Custom Thumbnail <span className="text-xs text-gray-400 font-normal">(poster image for video)</span>
