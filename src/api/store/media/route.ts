@@ -108,8 +108,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         let resProds;
         try {
           resProds = await pgConnection.raw(
-            `SELECT p.id, p.title, p.handle, p.metadata,
-                    COALESCE(p.thumbnail, (SELECT url FROM product_image pi WHERE pi.product_id = p.id AND pi.deleted_at IS NULL ORDER BY pi.rank ASC LIMIT 1)) as thumbnail
+            `SELECT p.id, p.title, p.handle, p.metadata, p.thumbnail
              FROM product p
              WHERE (p.id IN (${placeholders}) OR p.handle IN (${placeholders}) OR p.metadata->>'odoo_template_id' IN (${placeholders})) AND p.deleted_at IS NULL`,
             [...allProductIds, ...allProductIds, ...allProductIds]
@@ -176,14 +175,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       const brandInfo = m.brand ? brandLogoMap.get(m.brand) : null
       const pids = parseProductIds(m.product_ids)
       const related_products = pids.map((pid: string) => productMap.get(pid)).filter(Boolean)
-      
-      const debugInfo = JSON.stringify({ raw_pids: m.product_ids, pids, mapHas: pids.map(p => productMap.has(p)), err: dbgError })
 
       return {
         id: m.id,
         url: makeAbsolute(m.url || null),
         mime_type: m.mime_type || null,
-        title: (m.title || null) + " | DBG: " + debugInfo,
+        title: m.title || null,
         title_ar: m.title_ar || null,
         alt_text: m.alt_text || null,
         thumbnail_url: makeAbsolute(m.thumbnail_url || null),
