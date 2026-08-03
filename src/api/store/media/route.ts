@@ -98,19 +98,26 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     // Batch-fetch products from the DB using raw SQL for performance
     const productMap = new Map<string, any>()
+    let dbgError = null;
     if (allProductIds.length > 0) {
       try {
         const pgConnection: Knex = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION)
         const placeholders = allProductIds.map(() => '?').join(', ')
 
         // Query products by ID, Handle, or Odoo Template ID cleanly
-        const resProds = await pgConnection.raw(
-          `SELECT p.id, p.title, p.handle, p.metadata,
-                  COALESCE(p.thumbnail, (SELECT url FROM product_image pi WHERE pi.product_id = p.id AND pi.deleted_at IS NULL ORDER BY pi.rank ASC LIMIT 1)) as thumbnail
-           FROM product p
-           WHERE (p.id IN (${placeholders}) OR p.handle IN (${placeholders}) OR p.metadata->>'odoo_template_id' IN (${placeholders})) AND p.deleted_at IS NULL`,
-          [...allProductIds, ...allProductIds, ...allProductIds]
-        )
+        let resProds;
+        try {
+          resProds = await pgConnection.raw(
+            `SELECT p.id, p.title, p.handle, p.metadata,
+                    COALESCE(p.thumbnail, (SELECT url FROM product_image pi WHERE pi.product_id = p.id AND pi.deleted_at IS NULL ORDER BY pi.rank ASC LIMIT 1)) as thumbnail
+             FROM product p
+             WHERE (p.id IN (${placeholders}) OR p.handle IN (${placeholders}) OR p.metadata->>'odoo_template_id' IN (${placeholders})) AND p.deleted_at IS NULL`,
+            [...allProductIds, ...allProductIds, ...allProductIds]
+          )
+        } catch (e: any) {
+          dbgError = e.message || String(e);
+          resProds = { rows: [] };
+        }
 
         const priceMap = new Map<string, string>()
         try {
@@ -132,20 +139,23 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
               priceMap.set(row.product_id, formatted)
             }
           }
-        } catch (priceErr) {
-          console.warn("Price fetch warning for media products:", priceErr)
+        } catch (priceErr: any) {
+          if (!dbgError) dbgError = priceErr.message || String(priceErr);
         }
 
         for (const row of resProds.rows || []) {
-          const pPrice = priceMap.get(row.id) || null
-          const prodObj = {
+          const prodObj: any = {
             id: row.id,
             title: row.title,
-            handle: row.handle || row.id,
+            handle: row.handle,
             thumbnail: makeAbsolute(row.thumbnail || null),
-            price: pPrice,
-            calculated_price: pPrice
           }
+          const pPrice = priceMap.get(row.id) || null
+          if (pPrice) {
+            prodObj.price = pPrice
+            prodObj.calculated_price = pPrice
+          }
+
           if (row.id) productMap.set(row.id, prodObj)
           if (row.handle) productMap.set(row.handle, prodObj)
           if (row.metadata) {
@@ -167,7 +177,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       const pids = parseProductIds(m.product_ids)
       const related_products = pids.map((pid: string) => productMap.get(pid)).filter(Boolean)
       
-      const debugInfo = JSON.stringify({ raw_pids: m.product_ids, pids, allIds: allProductIds, mapHas: pids.map(p => productMap.has(p)) })
+      const debugInfo = JSON.stringify({ raw_pids: m.product_ids, pids, mapHas: pids.map(p => productMap.has(p)), err: dbgError })
 
       return {
         id: m.id,
