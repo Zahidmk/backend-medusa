@@ -85,13 +85,13 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         const pgConnection: Knex = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION)
         const placeholders = allProductIds.map(() => '?').join(', ')
 
-        // Query products by ID or Handle cleanly
+        // Query products by ID, Handle, or Odoo Template ID cleanly
         const resProds = await pgConnection.raw(
           `SELECT p.id, p.title, p.handle, p.metadata,
                   COALESCE(p.thumbnail, (SELECT url FROM product_image pi WHERE pi.product_id = p.id AND pi.deleted_at IS NULL ORDER BY pi.rank ASC LIMIT 1)) as thumbnail
            FROM product p
-           WHERE (p.id IN (${placeholders}) OR p.handle IN (${placeholders})) AND p.deleted_at IS NULL`,
-          [...allProductIds, ...allProductIds]
+           WHERE (p.id IN (${placeholders}) OR p.handle IN (${placeholders}) OR p.metadata->>'odoo_template_id' IN (${placeholders})) AND p.deleted_at IS NULL`,
+          [...allProductIds, ...allProductIds, ...allProductIds]
         )
 
         const priceMap = new Map<string, string>()
