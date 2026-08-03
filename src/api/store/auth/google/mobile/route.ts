@@ -42,7 +42,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     
     // Find or create customer
     let customer;
-    const [customers] = await customerService.listCustomers({ email });
+    const customers = await customerService.listCustomers({ email });
     if (customers && customers.length > 0) {
       customer = customers[0];
     } else {
