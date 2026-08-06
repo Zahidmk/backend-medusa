@@ -41,11 +41,8 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
         }
       }
     } catch (e: any) {
-      return {
-        error: e?.message || "Unknown error",
-        code: "unknown",
-        detail: e
-      }
+      console.error("KNET ERROR:", e)
+      throw e
     }
   }
 
@@ -58,11 +55,8 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
         status: status === "success" ? PaymentSessionStatus.AUTHORIZED : PaymentSessionStatus.PENDING,
       }
     } catch (e: any) {
-      return {
-        error: e?.message || "Unknown error",
-        code: "unknown",
-        detail: e,
-      }
+      console.error("KNET ERROR:", e)
+      throw e
     }
   }
 
