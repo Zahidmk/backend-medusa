@@ -62,7 +62,20 @@ export default defineConfig({
     payment: {
       resolve: "@medusajs/payment",
       options: {
-        providers: [],
+        providers: [
+          {
+            resolve: "./src/modules/knet-payment",
+            id: "knet",
+            options: {
+              institutionId: process.env.KNET_INSTITUTION_ID,
+              merchantId: process.env.KNET_MERCHANT_ID,
+              userId: process.env.KNET_USER_ID,
+              password: process.env.KNET_PASSWORD,
+              resourcePath: process.env.KNET_RESOURCE_KEY,
+              isLive: process.env.KNET_ENV === "live",
+            }
+          }
+        ],
       },
     },
 
