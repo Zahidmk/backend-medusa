@@ -31,7 +31,6 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
       const knetPaymentUrl = `https://kpaytest.com.kw/portal/merchant.htm?paymentId=mock_${Date.now()}`
 
       return {
-        ...input,
         data: {
           url: knetPaymentUrl,
           id: `knet_${Date.now()}`,
@@ -70,7 +69,6 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
 
   async cancelPayment(input: any): Promise<any> {
     return {
-      ...input,
       data: {
         ...(input?.data || {}),
         status: "canceled"
@@ -80,7 +78,6 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
 
   async capturePayment(input: any): Promise<any> {
     return {
-      ...input,
       data: {
         ...(input?.data || {}),
         status: "captured"
@@ -109,7 +106,6 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
 
   async refundPayment(input: any): Promise<any> {
     return {
-      ...input,
       data: {
         ...(input?.data || {}),
         refunded_amount: input?.amount
