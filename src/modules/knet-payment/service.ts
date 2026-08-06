@@ -22,6 +22,9 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
   }
 
   async initiatePayment(input: any): Promise<any> {
+    console.log("===== KNET initiatePayment CALLED =====");
+    console.log(JSON.stringify(input, null, 2));
+
     try {
       const amount = input?.amount || 0;
       const currency = input?.currency_code || 'kwd';
