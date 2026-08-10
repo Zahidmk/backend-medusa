@@ -18,11 +18,11 @@ export const POST = async (
 
     const frontendSuccessUrl = process.env.MARKASOUQ_FRONTEND_URL 
       ? `${process.env.MARKASOUQ_FRONTEND_URL}/payment/knet/callback` 
-      : "https://markasouq.com/payment/knet/callback";
+      : "https://website.markasouqs.com/payment/knet/callback";
       
     const frontendErrorUrl = process.env.MARKASOUQ_FRONTEND_URL 
       ? `${process.env.MARKASOUQ_FRONTEND_URL}/payment/knet/callback` 
-      : "https://markasouq.com/payment/knet/callback";
+      : "https://website.markasouqs.com/payment/knet/callback";
 
     // 1. Handle KNET error fields (if present without trandata)
     if (errorText || errorNo) {
@@ -78,9 +78,13 @@ export const POST = async (
       return res.status(200).send(`REDIRECT=${frontendErrorUrl}?error=invalid_payload`);
     }
 
-    // In Medusa v2, payment session IDs are 'payses_<ulid>'. 
-    // We stripped 'payses_' to satisfy KNET alphanumeric requirement. We reconstruct it here.
-    const paymentSessionId = trackid.startsWith('payses_') ? trackid : `payses_${trackid}`;
+    // In Medusa v2, we generated the trackId in initiatePayment (e.g. 'KNET17...').
+    // Medusa saves the returned id directly. If trackid starts with 'KNET', it is the exact session ID.
+    // Fallback: if it was an older 'payses_' string stripped of its prefix, we reconstruct it.
+    let paymentSessionId = trackid;
+    if (!trackid.startsWith('KNET') && !trackid.startsWith('payses_')) {
+      paymentSessionId = `payses_${trackid}`;
+    }
 
     const paymentModuleService = req.scope.resolve(Modules.PAYMENT);
     

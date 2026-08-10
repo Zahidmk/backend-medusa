@@ -29,12 +29,10 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
     try {
       const amount = input?.amount || 0;
       const currency = input?.currency_code || 'kwd';
-      const rawSessionId = input.session_id || input.id;
-      // Medusa payment sessions typically look like 'payses_01H...' 
-      // KNET requires strict alphanumeric. We strip 'payses_' and rely on the ULID which is alphanumeric.
-      const trackId = rawSessionId.startsWith('payses_') 
-        ? rawSessionId.replace('payses_', '') 
-        : rawSessionId.replace(/[^a-zA-Z0-9]/g, '');
+      
+      // Medusa v2 initiatePayment does NOT have input.session_id or input.id yet.
+      // Generate a unique alphanumeric Track ID for KNET.
+      const trackId = "KNET" + Date.now().toString() + Math.random().toString(36).substring(2, 10).toUpperCase();
       
       this.logger_?.info?.(`Initializing Knet Payment for ${amount} ${currency} with trackId ${trackId}`)
 
@@ -57,10 +55,10 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
       });
 
       return {
+        id: trackId, // Required by Medusa v2
         data: {
           url: knetPaymentUrl,
           track_id: trackId, // Stored to fulfill verification requirement
-          id: rawSessionId,
           status: "pending"
         }
       }
