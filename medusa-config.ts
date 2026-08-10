@@ -67,12 +67,11 @@ export default defineConfig({
             resolve: "./src/modules/knet-payment",
             id: "knet",
             options: {
-              institutionId: process.env.KNET_INSTITUTION_ID,
-              merchantId: process.env.KNET_MERCHANT_ID,
-              userId: process.env.KNET_USER_ID,
-              password: process.env.KNET_PASSWORD,
-              resourcePath: process.env.KNET_RESOURCE_KEY,
-              isLive: process.env.KNET_ENV === "live",
+              env: process.env.KNET_ENV,
+              tranPortalId: process.env.KNET_TRAN_PORTAL_ID,
+              tranPortalPassword: process.env.KNET_TRAN_PORTAL_PASSWORD,
+              terminalResourceKey: process.env.KNET_TERMINAL_RESOURCE_KEY,
+              baseUrl: process.env.KNET_BASE_URL,
             }
           }
         ],

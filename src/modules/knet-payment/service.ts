@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { AbstractPaymentProvider, PaymentSessionStatus } from "@medusajs/framework/utils"
+import { KnetRawClient } from "./knet-client"
 
 type KnetOptions = {
   institutionId: string;
@@ -28,15 +29,38 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
     try {
       const amount = input?.amount || 0;
       const currency = input?.currency_code || 'kwd';
+      const rawSessionId = input.session_id || input.id;
+      // Medusa payment sessions typically look like 'payses_01H...' 
+      // KNET requires strict alphanumeric. We strip 'payses_' and rely on the ULID which is alphanumeric.
+      const trackId = rawSessionId.startsWith('payses_') 
+        ? rawSessionId.replace('payses_', '') 
+        : rawSessionId.replace(/[^a-zA-Z0-9]/g, '');
       
-      this.logger_?.info?.(`Initializing Knet Payment for ${amount} ${currency}`)
+      this.logger_?.info?.(`Initializing Knet Payment for ${amount} ${currency} with trackId ${trackId}`)
 
-      const knetPaymentUrl = `https://kpaytest.com.kw/portal/merchant.htm?paymentId=mock_${Date.now()}`
+      const knetClient = new KnetRawClient({
+        env: process.env.KNET_ENV || "test",
+        tranPortalId: process.env.KNET_TRAN_PORTAL_ID || "",
+        tranPortalPassword: process.env.KNET_TRAN_PORTAL_PASSWORD || "",
+        terminalResourceKey: process.env.KNET_TERMINAL_RESOURCE_KEY || "",
+        baseUrl: process.env.KNET_BASE_URL || "",
+      });
+
+      // Use the verified production backend URL for the callback
+      const frontendBase = process.env.PUBLIC_BACKEND_URL || "https://admin.markasouqs.com";
+      
+      const knetPaymentUrl = knetClient.preparePaymentUrl({
+        amount: amount,
+        trackId: trackId,
+        responseUrl: `${frontendBase}/store/knet/callback`,
+        errorUrl: `${frontendBase}/store/knet/callback`, // Both go to the same callback for backend verification
+      });
 
       return {
         data: {
           url: knetPaymentUrl,
-          id: `knet_${Date.now()}`,
+          track_id: trackId, // Stored to fulfill verification requirement
+          id: rawSessionId,
           status: "pending"
         }
       }
