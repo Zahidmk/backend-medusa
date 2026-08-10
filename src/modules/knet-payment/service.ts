@@ -47,8 +47,19 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
       // Use the verified production backend URL for the callback
       const frontendBase = process.env.PUBLIC_BACKEND_URL || "https://admin.markasouqs.com";
       
+      // Convert Medusa's minor-unit amount to major units based on currency
+      let finalAmount = amount;
+      const currencyLower = currency.toLowerCase();
+      if (['kwd', 'bhd', 'omr'].includes(currencyLower)) {
+        finalAmount = amount / 1000;
+      } else if (['jpy'].includes(currencyLower)) {
+        finalAmount = amount;
+      } else {
+        finalAmount = amount / 100;
+      }
+      
       const knetPaymentUrl = knetClient.preparePaymentUrl({
-        amount: amount,
+        amount: finalAmount,
         trackId: trackId,
         responseUrl: `${frontendBase}/store/knet/callback`,
         errorUrl: `${frontendBase}/store/knet/callback`, // Both go to the same callback for backend verification
