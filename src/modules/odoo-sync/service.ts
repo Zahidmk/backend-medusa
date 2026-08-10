@@ -49,7 +49,7 @@ export interface OdooProduct {
   standard_price: number                // Cost
   compare_list_price: number            // Compare-to / Was price
 
-  retail_price?: number                 // Retail price
+  marka_price?: number                  // Marka price
   currency_id: M2O
 
   // ── Descriptions ──
@@ -291,7 +291,7 @@ export const ODOO_PRODUCT_TEMPLATE_FIELDS = [
   "sequence", "is_favorite", "color",
 
   // Prices
-  "list_price", "standard_price", "compare_list_price", "retail_price",
+  "list_price", "standard_price", "compare_list_price", "marka_price",
   "currency_id",
 
   // Descriptions
@@ -899,8 +899,8 @@ class OdooSyncService {
         // ── Prices ──
         cost_price: product.standard_price || 0,
         compare_price: product.compare_list_price || 0,
-        retail_price: product.retail_price || 0,
-        ecommerce_price: product.retail_price || null,
+        marka_price: product.marka_price || 0,
+        ecommerce_price: product.marka_price || null,
         currency: product.currency_id ? product.currency_id[1] : null,
 
         // ── Descriptions ──
@@ -995,8 +995,8 @@ class OdooSyncService {
           weight: product.weight || 0,
           metadata: {
             odoo_product_id: product.id,
-            odoo_price: product.retail_price || 0,
-            odoo_price_amount: Math.round((product.retail_price || 0) * 1000),
+            odoo_price: product.marka_price || 0,
+            odoo_price_amount: Math.round((product.marka_price || 0) * 1000),
             odoo_currency: "kwd",
           },
         },

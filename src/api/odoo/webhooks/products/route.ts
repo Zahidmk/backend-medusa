@@ -184,7 +184,7 @@ interface OdooProductPayload {
   default_code?: string
   barcode?: string
   list_price?: number
-  retail_price?: number
+  marka_price?: number
   compare_list_price?: number        // strikethrough price on product page
   standard_price?: number            // cost price (Odoo field name) → saved as cost_price
   cost_price?: number                // alias for standard_price
@@ -301,8 +301,8 @@ async function upsertProduct(
   const sku = p.default_code || `ODOO-${odooId}`
   const title = p.name || `Odoo Product ${odooId}`
   const KWD_FILS_DIVISOR = 1000
-  // Only use retail_price as requested
-  const rawPrice = p.retail_price || 0
+  // Only use marka_price as requested
+  const rawPrice = p.marka_price || 0
   const price = Math.round(rawPrice * KWD_FILS_DIVISOR)
   const description = p.description_sale || p.description || ""
   const weight = p.weight ? String(p.weight) : null
@@ -389,7 +389,7 @@ async function upsertProduct(
     synced_at: new Date().toISOString(),
     // ── Pricing ──────────────────────────────────────────────────────────
     compare_price: p.compare_list_price || 0,
-    retail_price: p.retail_price || 0,
+    marka_price: p.marka_price || 0,
     // ── Brand ────────────────────────────────────────────────────────────
     brand: brand,
     brand_logo_url: brandLogoUrl,

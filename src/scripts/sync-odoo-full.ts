@@ -14,7 +14,7 @@
  *     a. Creates/updates the product with all metadata
  *     b. Resolves and syncs variants with attributes (Color, Size, etc.)
  *     c. Downloads and attaches images (main + gallery)
- *     d. Creates pricing records (list_price: number; compare_list_price: number; retail_price?: number)
+ *     d. Creates pricing records (list_price: number; compare_list_price: number; marka_price?: number)
  *     e. Sets inventory levels
  *     f. Maps SEO fields, ratings, ribbons, tags
  *     g. Stores cross-sell IDs for frontend resolution
@@ -338,8 +338,8 @@ export default async function syncOdooFull({ container }: ExecArgs) {
                   metadata: {
                     odoo_variant_id: v.id,
                     odoo_product_id: odooProduct.id,
-                    odoo_price: odooProduct.retail_price || 0,
-                    odoo_price_amount: toSmallestUnit(odooProduct.retail_price || 0),
+                    odoo_price: odooProduct.marka_price || 0,
+                    odoo_price_amount: toSmallestUnit(odooProduct.marka_price || 0),
                     odoo_currency: productCurrency,
                     odoo_stock: v.qty_available || 0,
                     odoo_forecasted: v.virtual_available || 0,
@@ -459,7 +459,7 @@ export default async function syncOdooFull({ container }: ExecArgs) {
             const fullProduct = await productService.retrieveProduct(medusaIdForPricing, { relations: ["variants"] })
             for (const variant of (fullProduct.variants || [])) {
               const variantMeta = (variant.metadata || {}) as Record<string, any>
-              const priceAmount = variantMeta.odoo_price_amount || toSmallestUnit(odooProduct.retail_price || 0)
+              const priceAmount = variantMeta.odoo_price_amount || toSmallestUnit(odooProduct.marka_price || 0)
               const currency = variantMeta.odoo_currency || productCurrency
 
               const { data: existingLinks } = await query.graph({

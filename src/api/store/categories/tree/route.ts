@@ -43,13 +43,21 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       const meta = typeof cat.metadata === "string" 
         ? JSON.parse(cat.metadata) 
         : (cat.metadata || {})
+        
+      const odooId = meta.odoo_id
+      const odooUrl = process.env.ODOO_URL || "https://oskarllc-new-31031096.dev.odoo.com"
+      let imageUrl = meta.image_url || null
+      
+      if (!imageUrl && odooId) {
+        imageUrl = `${odooUrl.replace(/\/$/, '')}/web/image/product.public.category/${odooId}/image_1920`
+      }
 
       categoryMap[cat.id] = {
         id: cat.id,
         name: cat.name,
         handle: cat.handle,
         description: cat.description || "",
-        image_url: meta.image_url || null,
+        image_url: imageUrl,
         product_count: parseInt(cat.product_count),
         parent_id: cat.parent_category_id,
         children: [],

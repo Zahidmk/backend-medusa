@@ -152,7 +152,7 @@ export default async function odooSync({ container }: ExecArgs) {
   console.log(`\n4. Fetching products (page size: ${PAGE_SIZE})...`)
   const fields = [
     "id", "name", "default_code", "barcode",
-    "list_price", "retail_price",
+    "list_price", "marka_price",
     "description_sale", "categ_id", "brand_id", "x_studio_brand_1", "custom_brand_id",
     "weight", "qty_available", "is_published", "website_url",
   ]
@@ -161,7 +161,7 @@ export default async function odooSync({ container }: ExecArgs) {
     id: number; name: string; default_code: string | false; barcode: string | false
     list_price: number;
     compare_list_price?: number | false | null;
-    retail_price?: number | false | null; x_retail_price?: number | false | null; x_compare_list_price?: number | false | null
+    marka_price?: number | false | null; x_marka_price?: number | false | null; x_compare_list_price?: number | false | null
     description_sale: string | false; categ_id: [number, string] | false
     brand_id: [number, string] | false; x_studio_brand_1: string | false; custom_brand_id?: [number, string] | false
     weight: number; qty_available: number; is_published: boolean
@@ -188,8 +188,8 @@ export default async function odooSync({ container }: ExecArgs) {
       sku: sample.default_code,
       list_price: sample.list_price,
       compare_list_price: sample.compare_list_price,
-      retail_price: sample.retail_price,
-      x_retail_price: sample.x_retail_price,
+      marka_price: sample.marka_price,
+      x_marka_price: sample.x_marka_price,
       x_compare_list_price: sample.x_compare_list_price
     }, null, 2))
     console.log("--------------------------------------\n")
@@ -249,7 +249,7 @@ export default async function odooSync({ container }: ExecArgs) {
         odoo_id: p.id, odoo_sku: sku, odoo_barcode: p.barcode || null,
         odoo_category: category, odoo_brand: brand,
         odoo_qty: p.qty_available || 0, 
-        retail_price: p.retail_price || null,
+        marka_price: p.marka_price || null,
         list_price: p.list_price || null,
         synced_at: new Date().toISOString(),
       })
