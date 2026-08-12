@@ -3,17 +3,7 @@ import type { MedusaRequest, MedusaResponse, MedusaNextFunction } from "@medusaj
 import Busboy from "busboy"
 import path from "path"
 import fs from "fs"
-import mime from "mime-types"
 import { injectBranding } from "./middlewares/branding"
-
-// Development-only middleware to safely handle multipart/form-data for admin
-// upload routes. This avoids the global JSON/body parser from interfering
-// with multipart streams during local development where middleware ordering
-// can cause `LIMIT_UNEXPECTED_FILE` errors.
-//
-// This middleware is intentionally gated to non-production environments and
-// requires either a valid admin session (production path) or the
-// DEV_ADMIN_TOKEN header when ENABLE_DEV_ADMIN_BYPASS=1.
 
 const uploadDir = path.join(process.cwd(), "static", "uploads")
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
@@ -61,7 +51,6 @@ async function adminMultipartGuard(
       if (!storedFilePath) {
         return res.status(400).json({ message: 'No file uploaded' })
       }
-      // Block video uploads unless explicitly enabled
       const isVideo = (mimetype || '').startsWith('video/')
       const allowVideos = String(process.env.ALLOW_VIDEO_UPLOADS || '').toLowerCase() === 'true'
       if (isVideo && !allowVideos) {
@@ -80,37 +69,86 @@ async function adminMultipartGuard(
   }
 }
 
+function parseKnetRawBody(rawBody: string): Record<string, any> {
+  const result: Record<string, any> = {};
+  if (!rawBody || typeof rawBody !== "string") return result;
+
+  const trimmed = rawBody.trim();
+
+  // Strategy 1: URLSearchParams (works for standard form-urlencoded or plain query string regardless of Content-Type header)
+  try {
+    const params = new URLSearchParams(trimmed);
+    for (const [key, val] of params.entries()) {
+      if (key && val && !key.startsWith("<")) {
+        result[key] = val;
+      }
+    }
+  } catch { /* ignore */ }
+
+  // Strategy 2: HTML input field extraction if trandata was not found via URLSearchParams
+  if (!result.trandata) {
+    const inputRegex = /<input\s+[^>]*name=["']?([^"'\s>]+)["']?[^>]*value=["']?([^"'\s>]*)["']?[^>]*>/gi;
+    let match: RegExpExecArray | null;
+    while ((match = inputRegex.exec(trimmed)) !== null) {
+      const name = match[1];
+      const val = match[2];
+      if (name) {
+        result[name] = val;
+      }
+    }
+
+    const inputRegexAlt = /<input\s+[^>]*value=["']?([^"'\s>]*)["']?[^>]*name=["']?([^"'\s>]+)["']?[^>]*>/gi;
+    while ((match = inputRegexAlt.exec(trimmed)) !== null) {
+      const val = match[1];
+      const name = match[2];
+      if (name && !result[name]) {
+        result[name] = val;
+      }
+    }
+  }
+
+  // Strategy 3: Regex fallback if trandata key=value is embedded in raw body text/html
+  if (!result.trandata) {
+    const trandataMatch = /trandata=([A-Fa-f0-9]+)/i.exec(trimmed) || /trandata=([^&\s<"']+)/i.exec(trimmed);
+    if (trandataMatch && trandataMatch[1]) {
+      result.trandata = trandataMatch[1];
+    }
+  }
+
+  return result;
+}
+
 async function parseKnetUrlEncoded(
   req: MedusaRequest,
   res: MedusaResponse,
   next: MedusaNextFunction
 ) {
   try {
-    console.log("[KNET Middleware] Callback request detected");
+    const ct = (req.headers["content-type"] || "unknown") as string;
+    console.log("[KNET Middleware] Callback detected");
+    console.log(`[KNET Middleware] Content-Type: ${ct}`);
 
-    const ct = (req.headers["content-type"] || "") as string;
-    if (ct.includes("application/x-www-form-urlencoded")) {
-      let rawBody = "";
-      req.on("data", (chunk) => {
-        rawBody += chunk.toString();
-      });
-      req.on("end", () => {
-        try {
-          const params = new URLSearchParams(rawBody);
-          const bodyObj: Record<string, any> = {};
-          for (const [key, val] of params.entries()) {
-            bodyObj[key] = val;
-          }
-          ;(req as any).body = bodyObj;
-          ;(req as any).rawBody = rawBody;
-        } catch (err) {
-          console.error("[KNET Middleware] Failed to parse urlencoded body", err);
-          ;(req as any).body = {};
-        }
-        next();
-      });
-      return;
-    }
+    let rawBody = "";
+    req.on("data", (chunk) => {
+      rawBody += chunk.toString();
+    });
+    req.on("end", () => {
+      try {
+        console.log(`[KNET Middleware] Raw body length: ${rawBody.length}`);
+        const parsedObj = parseKnetRawBody(rawBody);
+        
+        console.log(`[KNET Middleware] Parsed body keys: ${Object.keys(parsedObj).join(", ")}`);
+        console.log(`[KNET Middleware] trandata present: ${parsedObj.trandata ? "yes" : "no"}`);
+
+        ;(req as any).body = parsedObj;
+        ;(req as any).rawBody = rawBody;
+      } catch (err) {
+        console.error("[KNET Middleware] Failed to parse request body", err);
+        ;(req as any).body = {};
+      }
+      next();
+    });
+    return;
   } catch (e) {
     console.error("[KNET Middleware] Error reading request stream", e);
   }

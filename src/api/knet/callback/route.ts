@@ -11,13 +11,34 @@ async function handleKnetCallback(req: MedusaRequest, res: MedusaResponse) {
   console.log(`[KNET Callback] Content-Type: ${contentType}`);
 
   try {
-    // Body can come from URLSearchParams parser in middleware or req.query (GET)
+    // Body can come from URLSearchParams/HTML parser in middleware or req.query (GET)
     const body = (req as any).body || {};
     const query = (req.query || {}) as Record<string, any>;
     
     // Merge query & body for universal POST/GET support
-    const payload = { ...query, ...body };
+    let payload = { ...query, ...body };
+
+    // Secondary fail-safe if trandata is missing but rawBody exists
+    if (!payload.trandata && (req as any).rawBody) {
+      const rawStr = String((req as any).rawBody).trim();
+      try {
+        const params = new URLSearchParams(rawStr);
+        for (const [key, val] of params.entries()) {
+          if (key && val && !payload[key]) payload[key] = val;
+        }
+      } catch { /* ignore */ }
+      
+      if (!payload.trandata) {
+        const inputRegex = /<input\s+[^>]*name=["']?([^"'\s>]+)["']?[^>]*value=["']?([^"'\s>]*)["']?[^>]*>/gi;
+        let match: RegExpExecArray | null;
+        while ((match = inputRegex.exec(rawStr)) !== null) {
+          if (match[1] && match[2] && !payload[match[1]]) payload[match[1]] = match[2];
+        }
+      }
+    }
+
     console.log(`[KNET Callback] Body keys: ${Object.keys(payload).join(", ")}`);
+    console.log(`[KNET Callback] trandata present: ${payload.trandata ? "yes" : "no"}`);
 
     const tranData = payload.trandata;
     const errorText = payload.ErrorText || payload.errortext;
