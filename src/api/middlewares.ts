@@ -160,8 +160,9 @@ export default defineMiddlewares({
       middlewares: [authenticate("customer", ["session", "bearer"], { allowUnauthenticated: true })],
     },
     {
-      // Disable Medusa's JSON body parser for KNET callback so urlencoded POST data is read cleanly
-      matcher: "/store/knet/callback*",
+      // Disable Medusa's JSON body parser for KNET POST callback so urlencoded data is read cleanly
+      matcher: "/store/knet/callback",
+      method: "POST",
       bodyParser: false,
       middlewares: [parseKnetUrlEncoded],
     },
