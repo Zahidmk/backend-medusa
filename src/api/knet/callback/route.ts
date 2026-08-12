@@ -196,10 +196,18 @@ async function handleKnetCallback(req: MedusaRequest, res: MedusaResponse) {
     let authResultStatus = "pending";
     if (result === "CAPTURED") {
       try {
+        console.log("[KNET Debug] Session data before authorization:", {
+          session_id: session?.id,
+          status: session?.data?.status,
+          knet_result: session?.data?.knet_result,
+          cart_id: session?.data?.cart_id,
+        });
         console.log(`[KNET Callback] Authorization started for session: ${session.id}`);
+        // Pass knet_result via context so authorizePayment can use it even if session.data
+        // was not yet persisted (Medusa updates DB asynchronously via updatePaymentSession pipeline)
         await paymentModuleService.authorizePaymentSession(
           session.id,
-          {}
+          { knet_result: result }
         );
         authResultStatus = "authorized";
         console.log(`[KNET Callback] Authorization succeeded: yes`);

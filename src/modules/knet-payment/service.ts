@@ -110,12 +110,23 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
   async authorizePayment(input: any): Promise<any> {
     try {
       const data = input?.data || {};
-      // Authorize if KNET returned CAPTURED result OR if status was already set to success
+      const context = input?.context || {};
+
+      console.log("[KNET Debug] authorizePayment received data:", {
+        status: data?.status,
+        knet_result: data?.knet_result,
+        cart_id: data?.cart_id,
+      });
+      console.log("[KNET Debug] authorizePayment context.knet_result:", context?.knet_result);
+
+      // Primary: check context (injected at callback time from decrypted KNET payload)
+      // Fallback: check data fields (if session data was successfully persisted)
       const isAuthorized =
+        context.knet_result === "CAPTURED" ||
         data.knet_result === "CAPTURED" ||
         data.status === "success";
 
-      console.log(`[KNET Provider] authorizePayment called. knet_result=${data.knet_result} status=${data.status} isAuthorized=${isAuthorized}`);
+      console.log(`[KNET Provider] authorizePayment called. knet_result=${data.knet_result} context_knet_result=${context.knet_result} status=${data.status} isAuthorized=${isAuthorized}`);
 
       return {
         data,
@@ -178,7 +189,11 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
   }
 
   async updatePayment(input: any): Promise<any> {
-    return this.initiatePayment(input)
+    // Pass data through unchanged — do NOT re-initiate payment.
+    // Calling initiatePayment here would overwrite knet_result/status with a fresh 'pending' session.
+    return {
+      data: input?.data || {}
+    }
   }
 
   async getWebhookActionAndData(payload: any): Promise<any> {
