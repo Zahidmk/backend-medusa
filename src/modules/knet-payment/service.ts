@@ -109,12 +109,18 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
 
   async authorizePayment(input: any): Promise<any> {
     try {
-      const status = input?.data?.status as string
-      
+      const data = input?.data || {};
+      // Authorize if KNET returned CAPTURED result OR if status was already set to success
+      const isAuthorized =
+        data.knet_result === "CAPTURED" ||
+        data.status === "success";
+
+      console.log(`[KNET Provider] authorizePayment called. knet_result=${data.knet_result} status=${data.status} isAuthorized=${isAuthorized}`);
+
       return {
-        data: input?.data || {},
-        status: status === "success" ? PaymentSessionStatus.AUTHORIZED : PaymentSessionStatus.PENDING,
-      }
+        data,
+        status: isAuthorized ? PaymentSessionStatus.AUTHORIZED : PaymentSessionStatus.PENDING,
+      };
     } catch (e: any) {
       console.error("KNET ERROR:", e)
       throw e

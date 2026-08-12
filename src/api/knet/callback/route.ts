@@ -14,14 +14,15 @@ async function handleKnetCallback(req: MedusaRequest, res: MedusaResponse) {
     // Body can come from URLSearchParams/HTML parser in middleware or req.query (GET)
     const body = (req as any).body || {};
     const query = (req.query || {}) as Record<string, any>;
-    
+
+
     // Merge query & body for universal POST/GET support
     let payload = { ...query, ...body };
 
     // Secondary fail-safe if trandata is missing but rawBody exists
     if (!payload.trandata && (req as any).rawBody) {
       const rawStr = String((req as any).rawBody).trim();
-      
+
       // If rawBody is a direct raw hex encrypted payload
       if (/^[0-9A-Fa-f]{32,}$/.test(rawStr) && rawStr.length % 2 === 0) {
         payload.trandata = rawStr;
@@ -32,7 +33,7 @@ async function handleKnetCallback(req: MedusaRequest, res: MedusaResponse) {
             if (key && val && !payload[key]) payload[key] = val;
           }
         } catch { /* ignore */ }
-        
+
         if (!payload.trandata) {
           const inputRegex = /<input\s+[^>]*name=["']?([^"'\s>]+)["']?[^>]*value=["']?([^"'\s>]*)["']?[^>]*>/gi;
           let match: RegExpExecArray | null;
@@ -51,12 +52,12 @@ async function handleKnetCallback(req: MedusaRequest, res: MedusaResponse) {
     const errorNo = payload.Error || payload.error;
     const trackIdFromError = payload.trackid || payload.trackId;
 
-    const frontendSuccessUrl = process.env.MARKASOUQ_FRONTEND_URL 
-      ? `${process.env.MARKASOUQ_FRONTEND_URL}/payment/knet/callback` 
+    const frontendSuccessUrl = process.env.MARKASOUQ_FRONTEND_URL
+      ? `${process.env.MARKASOUQ_FRONTEND_URL}/payment/knet/callback`
       : "https://website.markasouqs.com/payment/knet/callback";
-      
-    const frontendErrorUrl = process.env.MARKASOUQ_FRONTEND_URL 
-      ? `${process.env.MARKASOUQ_FRONTEND_URL}/payment/knet/callback` 
+
+    const frontendErrorUrl = process.env.MARKASOUQ_FRONTEND_URL
+      ? `${process.env.MARKASOUQ_FRONTEND_URL}/payment/knet/callback`
       : "https://website.markasouqs.com/payment/knet/callback";
 
     // 1. Handle KNET error fields (if present without trandata)
@@ -125,19 +126,19 @@ async function handleKnetCallback(req: MedusaRequest, res: MedusaResponse) {
     }
 
     const paymentModuleService = req.scope.resolve(Modules.PAYMENT);
-    
+
     // Robust session lookup: try ID directly first, then query by data.track_id or data.cart_id
     console.log(`[KNET Callback] Payment session lookup for: ${targetTrackId}`);
     let session: any = null;
-    
+
     try {
       session = await paymentModuleService.retrievePaymentSession(targetTrackId);
     } catch (e) {
       // Search active payment sessions
       try {
         const sessions = await paymentModuleService.listPaymentSessions({});
-        session = sessions.find((s: any) => 
-          s.id === targetTrackId || 
+        session = sessions.find((s: any) =>
+          s.id === targetTrackId ||
           s.data?.track_id === targetTrackId ||
           s.data?.trackId === targetTrackId ||
           (udf1 && s.data?.cart_id === udf1)
@@ -191,31 +192,41 @@ async function handleKnetCallback(req: MedusaRequest, res: MedusaResponse) {
     });
 
     // 7. Authorize payment in Medusa if successful
+    const cartId = session.data?.cart_id || udf1 || "";
     let authResultStatus = "pending";
     if (result === "CAPTURED") {
       try {
+        console.log(`[KNET Callback] Authorization started for session: ${session.id}`);
         await paymentModuleService.authorizePaymentSession(
           session.id,
           {}
         );
         authResultStatus = "authorized";
-        console.log(`[KNET Callback] Authorization result: ${authResultStatus} for session ${session.id}`);
+        console.log(`[KNET Callback] Authorization succeeded: yes`);
+        console.log(`[KNET Callback] Authorization status/result: authorized`);
       } catch (e: any) {
-        console.error(`[KNET Callback] Authorization failed for session ${session.id}:`, e?.message || e);
+        authResultStatus = "failed";
+        console.error(`[KNET Callback] Authorization succeeded: no`);
+        console.error(`[KNET Callback] Authorization failed for session ${session.id}: ${e?.message || e}`);
+        // Authorization failure: do NOT redirect to success
+        const errRedirect = `${frontendErrorUrl}?error=authorization_failed`;
+        console.log(`[KNET Callback] Returning success redirect: no`);
+        console.log(`[KNET Callback] Returning redirect: ${errRedirect}`);
+        return res.status(200).send(`REDIRECT=${errRedirect}`);
       }
     } else {
       console.log(`[KNET Callback] Authorization skipped. Result: ${result}`);
     }
 
     // 8. Return REDIRECT=<URL> as required by KNET
-    const cartId = session.data?.cart_id || udf1 || "";
-    const finalRedirectUrl = result === "CAPTURED"
+    const finalRedirectUrl = result === "CAPTURED" && authResultStatus === "authorized"
       ? `${frontendSuccessUrl}?cart_id=${cartId}&status=success`
       : `${frontendErrorUrl}?error=${encodeURIComponent(result || "failed")}`;
 
+    console.log(`[KNET Callback] Returning success redirect: ${result === "CAPTURED" && authResultStatus === "authorized" ? "yes" : "no"}`);
     console.log(`[KNET Callback] Returning redirect: ${finalRedirectUrl}`);
     return res.status(200).send(`REDIRECT=${finalRedirectUrl}`);
-    
+
   } catch (error: any) {
     console.error("[KNET Callback] Fatal error processing callback", error);
     const errRedirect = "https://website.markasouqs.com/payment/knet/callback?error=internal_server_error";
