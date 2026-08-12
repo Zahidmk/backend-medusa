@@ -68,7 +68,7 @@ async function handleKnetCallback(req: MedusaRequest, res: MedusaResponse) {
       return res.status(200).send(`REDIRECT=${errRedirect}`);
     }
 
-    console.log(`[KNET Callback] trandata received: ${tranData.substring(0, 20)}...`);
+    console.log("[KNET Callback] trandata received: yes");
     console.log("[KNET Callback] Decryption started");
 
     // 2. Initialize client to decrypt

@@ -69,13 +69,23 @@ async function adminMultipartGuard(
   }
 }
 
+function getSanitizedRawBodyPreview(rawBody: string): string {
+  if (!rawBody) return "";
+  return rawBody
+    .substring(0, 300)
+    .replace(/value=["']?[^"'\s>]{15,}["']?/gi, 'value="[REDACTED]"')
+    .replace(/(trandata=)[^&\s<"']+/gi, '$1[REDACTED]')
+    .replace(/(tranid=)[^&\s<"']+/gi, '$1[REDACTED]')
+    .replace(/(paymentid=)[^&\s<"']+/gi, '$1[REDACTED]');
+}
+
 function parseKnetRawBody(rawBody: string): Record<string, any> {
   const result: Record<string, any> = {};
   if (!rawBody || typeof rawBody !== "string") return result;
 
   const trimmed = rawBody.trim();
 
-  // Strategy 1: URLSearchParams (works for standard form-urlencoded or plain query string regardless of Content-Type header)
+  // Strategy 1: Standard URLSearchParams (for form-urlencoded, query strings, or key=value pairs)
   try {
     const params = new URLSearchParams(trimmed);
     for (const [key, val] of params.entries()) {
@@ -85,33 +95,46 @@ function parseKnetRawBody(rawBody: string): Record<string, any> {
     }
   } catch { /* ignore */ }
 
-  // Strategy 2: HTML input field extraction if trandata was not found via URLSearchParams
+  // Strategy 2: Robust HTML Tag & Input Parser (case-insensitive for <INPUT>, <input>, any attribute ordering)
   if (!result.trandata) {
-    const inputRegex = /<input\s+[^>]*name=["']?([^"'\s>]+)["']?[^>]*value=["']?([^"'\s>]*)["']?[^>]*>/gi;
+    const inputTagRegex = /<input\b[^>]*>/gi;
     let match: RegExpExecArray | null;
-    while ((match = inputRegex.exec(trimmed)) !== null) {
-      const name = match[1];
-      const val = match[2];
-      if (name) {
+    while ((match = inputTagRegex.exec(trimmed)) !== null) {
+      const tagStr = match[0];
+      const nameMatch = /name=["']?([^"'\s/>]+)["']?/i.exec(tagStr);
+      const valMatch = /value=["']?([^"'\s/>]+)["']?/i.exec(tagStr);
+      if (nameMatch && nameMatch[1] && valMatch && valMatch[1] !== undefined) {
+        const name = nameMatch[1];
+        const val = valMatch[1];
         result[name] = val;
-      }
-    }
-
-    const inputRegexAlt = /<input\s+[^>]*value=["']?([^"'\s>]*)["']?[^>]*name=["']?([^"'\s>]+)["']?[^>]*>/gi;
-    while ((match = inputRegexAlt.exec(trimmed)) !== null) {
-      const val = match[1];
-      const name = match[2];
-      if (name && !result[name]) {
-        result[name] = val;
+        result[name.toLowerCase()] = val;
       }
     }
   }
 
-  // Strategy 3: Regex fallback if trandata key=value is embedded in raw body text/html
+  // Strategy 3: Key-Value regex scanner anywhere in body (e.g. trandata=... or paymentid=...)
   if (!result.trandata) {
-    const trandataMatch = /trandata=([A-Fa-f0-9]+)/i.exec(trimmed) || /trandata=([^&\s<"']+)/i.exec(trimmed);
-    if (trandataMatch && trandataMatch[1]) {
-      result.trandata = trandataMatch[1];
+    const kvRegex = /([a-zA-Z0-9_\-]+)=(?:["']([^"']*)["']|([^\s&<>]+))/g;
+    let kvMatch: RegExpExecArray | null;
+    while ((kvMatch = kvRegex.exec(trimmed)) !== null) {
+      const key = kvMatch[1];
+      const val = kvMatch[2] !== undefined ? kvMatch[2] : kvMatch[3];
+      if (key && val && !key.startsWith("<") && !result[key]) {
+        result[key] = val;
+        result[key.toLowerCase()] = val;
+      }
+    }
+  }
+
+  // Strategy 4: HTML Error page detection (if KNET test portal returned an HTML error page)
+  if (!result.trandata && !result.ErrorText && !result.errortext) {
+    const titleMatch = /<title[^>]*>([^<]+)<\/title>/i.exec(trimmed);
+    const bodyTextMatch = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(trimmed);
+    if (titleMatch || bodyTextMatch) {
+      const pageText = (titleMatch?.[1] || "") + " " + (bodyTextMatch?.[1] || "").replace(/<[^>]+>/g, " ");
+      if (/error|cancel|invalid|fail/i.test(pageText)) {
+        result.ErrorText = pageText.replace(/\s+/g, " ").trim().substring(0, 200);
+      }
     }
   }
 
@@ -134,7 +157,18 @@ async function parseKnetUrlEncoded(
     });
     req.on("end", () => {
       try {
+        const trimmed = rawBody.trim();
+        const startsWithHtml = trimmed.startsWith("<");
+        const hasTrandataStr = /trandata/i.test(trimmed);
+        const hasErrorStr = /error/i.test(trimmed);
+        const preview = getSanitizedRawBodyPreview(trimmed);
+
         console.log(`[KNET Middleware] Raw body length: ${rawBody.length}`);
+        console.log(`[KNET Middleware] Starts with HTML: ${startsWithHtml ? "yes" : "no"}`);
+        console.log(`[KNET Middleware] Contains 'trandata' string: ${hasTrandataStr ? "yes" : "no"}`);
+        console.log(`[KNET Middleware] Contains 'Error' string: ${hasErrorStr ? "yes" : "no"}`);
+        console.log(`[KNET Middleware] Sanitized preview: ${preview}`);
+
         const parsedObj = parseKnetRawBody(rawBody);
         
         console.log(`[KNET Middleware] Parsed body keys: ${Object.keys(parsedObj).join(", ")}`);
