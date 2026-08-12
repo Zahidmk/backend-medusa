@@ -14,17 +14,17 @@ type KnetOptions = {
 export default class KnetPaymentProviderService extends AbstractPaymentProvider<KnetOptions> {
   static identifier = "knet"
   protected options_: KnetOptions
-  protected logger_: any
+  protected container_: any
 
-  constructor(container: { logger: any }, options: KnetOptions) {
+  constructor(container: any, options: KnetOptions) {
     super(container)
     this.options_ = options
     this.logger_ = container.logger
+    this.container_ = container
   }
 
   async initiatePayment(input: any): Promise<any> {
     console.log("===== KNET initiatePayment CALLED =====");
-    console.log(JSON.stringify(input, null, 2));
 
     try {
       const amount = input?.amount || 0;
@@ -58,7 +58,31 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
         finalAmount = amount / 100;
       }
       
-      const cartId = input?.cart_id || input?.context?.cart_id || ""
+      let cartId = input?.data?.cart_id || input?.data?.cartId || input?.cart_id || input?.context?.cart_id || input?.context?.cart?.id || "";
+
+      if (!cartId && input?.payment_collection_id) {
+        try {
+          const pgConnection = this.container_?.pgConnection || (this as any).pgConnection_;
+          if (pgConnection) {
+            const linkRow = await pgConnection.raw(
+              `SELECT cart_id FROM cart_payment_collection WHERE payment_collection_id = ? AND deleted_at IS NULL LIMIT 1`,
+              [input.payment_collection_id]
+            );
+            if (linkRow.rows?.[0]?.cart_id) {
+              cartId = linkRow.rows[0].cart_id;
+            }
+          }
+        } catch (err: any) {
+          console.warn("[KNET] Could not resolve cart_id from payment_collection link:", err?.message || err);
+        }
+      }
+
+      console.log(`[KNET] cart ID received: ${cartId ? "yes" : "no"}`);
+      if (cartId) {
+        console.log(`[KNET] cart ID value: ${cartId}`);
+      }
+      console.log(`[KNET] track ID: ${trackId}`);
+      console.log(`[KNET] payment session ID: ${trackId}`);
 
       const knetPaymentUrl = knetClient.preparePaymentUrl({
         amount: finalAmount,
