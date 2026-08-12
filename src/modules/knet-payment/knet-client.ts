@@ -23,11 +23,12 @@ export class KnetRawClient {
     trackId: string;
     responseUrl: string;
     errorUrl: string;
+    cartId?: string;
   }): string {
     const formattedAmount = params.amount.toFixed(3);
 
     // KNET RAW standard payment initialization payload
-    const payloadObject = {
+    const payloadObject: Record<string, string> = {
       id: this.options.tranPortalId,
       password: this.options.tranPortalPassword,
       action: "1",
@@ -38,6 +39,10 @@ export class KnetRawClient {
       errorURL: params.errorUrl,
       trackid: params.trackId,
     };
+
+    if (params.cartId) {
+      payloadObject.udf1 = params.cartId;
+    }
 
     // Convert to query string format: id=...&password=...&action=1...
     return Object.entries(payloadObject)
@@ -125,6 +130,7 @@ export class KnetRawClient {
     trackId: string;
     responseUrl: string;
     errorUrl: string;
+    cartId?: string;
   }): string {
     console.log(`[KNET] RAW initialization started`);
     console.log(`[KNET] Track ID: ${params.trackId}`);

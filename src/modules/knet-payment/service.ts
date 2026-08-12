@@ -58,9 +58,12 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
         finalAmount = amount / 100;
       }
       
+      const cartId = input?.cart_id || input?.context?.cart_id || ""
+
       const knetPaymentUrl = knetClient.preparePaymentUrl({
         amount: finalAmount,
         trackId: trackId,
+        cartId: cartId,
         responseUrl: `${frontendBase}/store/knet/callback`,
         errorUrl: `${frontendBase}/store/knet/callback`, // Both go to the same callback for backend verification
       });
@@ -70,6 +73,7 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
         data: {
           url: knetPaymentUrl,
           track_id: trackId, // Stored to fulfill verification requirement
+          cart_id: cartId,
           status: "pending"
         }
       }

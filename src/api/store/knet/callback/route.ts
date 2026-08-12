@@ -2,19 +2,24 @@ import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { Modules } from "@medusajs/framework/utils";
 import { KnetRawClient } from "../../../../modules/knet-payment/knet-client";
 
-export const POST = async (
-  req: MedusaRequest,
-  res: MedusaResponse
-) => {
+async function handleKnetCallback(req: MedusaRequest, res: MedusaResponse) {
+  const contentType = (req.headers["content-type"] || "") as string;
+  console.log("[KNET Callback] Request received");
+  console.log(`[KNET Callback] Content-Type: ${contentType}`);
+
   try {
-    // KNET sends data via application/x-www-form-urlencoded POST
-    const body = req.body as any;
+    // Body can come from URLSearchParams parser in middleware or req.query (GET)
+    const body = (req as any).body || {};
+    const query = (req.query || {}) as Record<string, any>;
     
-    // The main payload is in trandata
-    const tranData = body.trandata;
-    const errorText = body.ErrorText;
-    const errorNo = body.Error;
-    const trackIdFromError = body.trackid; // Only exists in some error cases
+    // Merge query & body for universal POST/GET support
+    const payload = { ...query, ...body };
+    console.log(`[KNET Callback] Body keys: ${Object.keys(payload).join(", ")}`);
+
+    const tranData = payload.trandata;
+    const errorText = payload.ErrorText || payload.errortext;
+    const errorNo = payload.Error || payload.error;
+    const trackIdFromError = payload.trackid || payload.trackId;
 
     const frontendSuccessUrl = process.env.MARKASOUQ_FRONTEND_URL 
       ? `${process.env.MARKASOUQ_FRONTEND_URL}/payment/knet/callback` 
@@ -27,14 +32,20 @@ export const POST = async (
     // 1. Handle KNET error fields (if present without trandata)
     if (errorText || errorNo) {
       console.error(`[KNET Callback] Error returned by KNET: ${errorNo} - ${errorText}`);
-      // Return REDIRECT to frontend error page
-      return res.status(200).send(`REDIRECT=${frontendErrorUrl}?error=${encodeURIComponent(errorText || "Payment failed")}`);
+      const errRedirect = `${frontendErrorUrl}?error=${encodeURIComponent(errorText || "Payment failed")}`;
+      console.log(`[KNET Callback] Returning redirect: ${errRedirect}`);
+      return res.status(200).send(`REDIRECT=${errRedirect}`);
     }
 
     if (!tranData) {
       console.error("[KNET Callback] No trandata found in request");
-      return res.status(200).send(`REDIRECT=${frontendErrorUrl}?error=missing_trandata`);
+      const errRedirect = `${frontendErrorUrl}?error=missing_trandata`;
+      console.log(`[KNET Callback] Returning redirect: ${errRedirect}`);
+      return res.status(200).send(`REDIRECT=${errRedirect}`);
     }
+
+    console.log(`[KNET Callback] trandata received: ${tranData.substring(0, 20)}...`);
+    console.log("[KNET Callback] Decryption started");
 
     // 2. Initialize client to decrypt
     const client = new KnetRawClient({
@@ -49,9 +60,12 @@ export const POST = async (
     let decryptedPayload: Record<string, string>;
     try {
       decryptedPayload = client.decryptPayload(tranData);
-    } catch (e) {
-      console.error("[KNET Callback] Decryption failed", e);
-      return res.status(200).send(`REDIRECT=${frontendErrorUrl}?error=decryption_failed`);
+      console.log("[KNET Callback] Decryption successful");
+    } catch (e: any) {
+      console.error("[KNET Callback] Decryption failed:", e?.message || e);
+      const errRedirect = `${frontendErrorUrl}?error=decryption_failed`;
+      console.log(`[KNET Callback] Returning redirect: ${errRedirect}`);
+      return res.status(200).send(`REDIRECT=${errRedirect}`);
     }
 
     const {
@@ -64,52 +78,72 @@ export const POST = async (
       trackid,
       amt,
       udf1,
-      udf2,
-      udf3,
-      udf4,
-      udf5,
     } = decryptedPayload;
 
-    console.log(`[KNET Callback] Parsed Response:`, { trackid, result, amt, paymentid });
+    console.log(`[KNET Callback] Parsed result: ${result}`);
+    console.log(`[KNET Callback] Track ID: ${trackid}`);
+    console.log(`[KNET Callback] Amount: ${amt}`);
+    console.log(`[KNET Callback] Payment ID: ${paymentid}`);
 
     // 4. Verify payment mapping
-    if (!trackid) {
+    const targetTrackId = trackid || trackIdFromError;
+    if (!targetTrackId) {
       console.error("[KNET Callback] Missing trackid in decrypted payload");
-      return res.status(200).send(`REDIRECT=${frontendErrorUrl}?error=invalid_payload`);
-    }
-
-    // In Medusa v2, we generated the trackId in initiatePayment (e.g. 'KNET17...').
-    // Medusa saves the returned id directly. If trackid starts with 'KNET', it is the exact session ID.
-    // Fallback: if it was an older 'payses_' string stripped of its prefix, we reconstruct it.
-    let paymentSessionId = trackid;
-    if (!trackid.startsWith('KNET') && !trackid.startsWith('payses_')) {
-      paymentSessionId = `payses_${trackid}`;
+      const errRedirect = `${frontendErrorUrl}?error=invalid_payload`;
+      console.log(`[KNET Callback] Returning redirect: ${errRedirect}`);
+      return res.status(200).send(`REDIRECT=${errRedirect}`);
     }
 
     const paymentModuleService = req.scope.resolve(Modules.PAYMENT);
     
-    // Check if session exists
-    let session: any;
+    // Robust session lookup: try ID directly first, then query by data.track_id or data.cart_id
+    console.log(`[KNET Callback] Payment session lookup for: ${targetTrackId}`);
+    let session: any = null;
+    
     try {
-      // paymentModuleService retrieves payment session by ID
-      session = await paymentModuleService.retrievePaymentSession(paymentSessionId);
+      session = await paymentModuleService.retrievePaymentSession(targetTrackId);
     } catch (e) {
-      console.error(`[KNET Callback] Payment Session not found: ${paymentSessionId}`);
-      return res.status(200).send(`REDIRECT=${frontendErrorUrl}?error=session_not_found`);
+      // Search active payment sessions
+      try {
+        const sessions = await paymentModuleService.listPaymentSessions({});
+        session = sessions.find((s: any) => 
+          s.id === targetTrackId || 
+          s.data?.track_id === targetTrackId ||
+          s.data?.trackId === targetTrackId ||
+          (udf1 && s.data?.cart_id === udf1)
+        );
+      } catch (listErr) {
+        console.error("[KNET Callback] Failed to list payment sessions", listErr);
+      }
     }
 
-    // 5. Verify Amount
-    const sessionAmountStr = session.amount.toFixed(3);
+    if (!session) {
+      console.error(`[KNET Callback] Payment Session not found for trackid: ${targetTrackId}`);
+      const errRedirect = `${frontendErrorUrl}?error=session_not_found`;
+      console.log(`[KNET Callback] Returning redirect: ${errRedirect}`);
+      return res.status(200).send(`REDIRECT=${errRedirect}`);
+    }
+
+    console.log(`[KNET Callback] Payment session found: ${session.id}`);
+
+    // 5. Verify Amount (Medusa KWD amount is in fils or major units depending on session)
+    let sessionMajorAmount = session.amount;
+    if (session.currency_code?.toLowerCase() === "kwd" && session.amount > 500) {
+      sessionMajorAmount = session.amount / 1000;
+    }
+    const sessionAmountStr = sessionMajorAmount.toFixed(3);
     const receivedAmountStr = parseFloat(amt || "0").toFixed(3);
 
     if (sessionAmountStr !== receivedAmountStr) {
       console.error(`[KNET Callback] Amount mismatch. Expected: ${sessionAmountStr}, Received: ${receivedAmountStr}`);
-      return res.status(200).send(`REDIRECT=${frontendErrorUrl}?error=amount_mismatch`);
+      const errRedirect = `${frontendErrorUrl}?error=amount_mismatch`;
+      console.log(`[KNET Callback] Returning redirect: ${errRedirect}`);
+      return res.status(200).send(`REDIRECT=${errRedirect}`);
     }
 
     // 6. Update session data to store KNET transaction details
     const updatedData = {
-      ...session.data,
+      ...(session.data || {}),
       knet_payment_id: paymentid,
       knet_result: result,
       knet_auth: auth,
@@ -120,38 +154,51 @@ export const POST = async (
     };
 
     await paymentModuleService.updatePaymentSession({
-      id: paymentSessionId,
+      id: session.id,
       currency_code: session.currency_code,
       amount: session.amount,
       data: updatedData
     });
 
     // 7. Authorize payment in Medusa if successful
+    let authResultStatus = "pending";
     if (result === "CAPTURED") {
       try {
         await paymentModuleService.authorizePaymentSession(
-          paymentSessionId,
+          session.id,
           {}
         );
-        console.log(`[KNET Callback] Payment Session ${paymentSessionId} authorized successfully.`);
-        // Note: The actual order completion relies on frontend returning to checkout/review
-        // where it calls /carts/:id/complete, which will now succeed.
-      } catch (e) {
-        console.error(`[KNET Callback] Failed to authorize payment session`, e);
+        authResultStatus = "authorized";
+        console.log(`[KNET Callback] Authorization result: ${authResultStatus} for session ${session.id}`);
+      } catch (e: any) {
+        console.error(`[KNET Callback] Authorization failed for session ${session.id}:`, e?.message || e);
       }
     } else {
-      console.log(`[KNET Callback] Payment not captured. Result: ${result}`);
+      console.log(`[KNET Callback] Authorization skipped. Result: ${result}`);
     }
 
-    // 8. Return exactly REDIRECT=<URL> as required by KNET
+    // 8. Return REDIRECT=<URL> as required by KNET
+    const cartId = session.data?.cart_id || udf1 || "";
     const finalRedirectUrl = result === "CAPTURED"
-      ? `${frontendSuccessUrl}?cart_id=${session.cart_id || ""}`
-      : `${frontendErrorUrl}?error=${result}`;
+      ? `${frontendSuccessUrl}?cart_id=${cartId}&status=success`
+      : `${frontendErrorUrl}?error=${encodeURIComponent(result || "failed")}`;
 
+    console.log(`[KNET Callback] Returning redirect: ${finalRedirectUrl}`);
     return res.status(200).send(`REDIRECT=${finalRedirectUrl}`);
     
-  } catch (error) {
+  } catch (error: any) {
     console.error("[KNET Callback] Fatal error processing callback", error);
-    return res.status(200).send(`REDIRECT=https://markasouq.com/payment/knet/callback?error=internal_server_error`);
+    const errRedirect = "https://website.markasouqs.com/payment/knet/callback?error=internal_server_error";
+    console.log(`[KNET Callback] Returning redirect: ${errRedirect}`);
+    return res.status(200).send(`REDIRECT=${errRedirect}`);
   }
+}
+
+export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
+  return handleKnetCallback(req, res);
 };
+
+export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
+  return handleKnetCallback(req, res);
+};
+

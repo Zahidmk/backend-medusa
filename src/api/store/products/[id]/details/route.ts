@@ -16,7 +16,7 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const pgConnection = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION)
   const productId = req.params.id
-  const currency = (req.query.currency as string) || "aed"
+  const currency = ((req.query.currency as string) || "kwd").toLowerCase()
 
   try {
     // 1. Product basic info
@@ -47,7 +47,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       [productId]
     )
 
-    // 3. All variants with prices
+    // 3. All variants with prices (case-insensitive currency match with fallback)
     const variantsResult = await pgConnection.raw(
       `SELECT pv.id, pv.title, pv.sku, pv.barcode, pv.ean,
               pv.allow_backorder, pv.manage_inventory,
@@ -58,10 +58,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
        FROM product_variant pv
        LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id
        LEFT JOIN price pp ON pp.price_set_id = pvps.price_set_id 
-         AND pp.currency_code = ?
+         AND (LOWER(pp.currency_code) = LOWER(?) OR pp.id = (
+           SELECT id FROM price p2 WHERE p2.price_set_id = pvps.price_set_id ORDER BY (LOWER(p2.currency_code) = LOWER(?)) DESC LIMIT 1
+         ))
        WHERE pv.product_id = ? AND pv.deleted_at IS NULL
        ORDER BY pv.variant_rank ASC`,
-      [currency, productId]
+      [currency, currency, productId]
     )
 
     // 4. Product options & option values
@@ -143,29 +145,45 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     let relatedProducts: any[] = []
     if (categoryIds.length > 0) {
       const relatedResult = await pgConnection.raw(
-        `SELECT DISTINCT p.id, p.title, p.handle, p.thumbnail, p.subtitle,
+        `SELECT DISTINCT p.id, p.title, p.handle, p.thumbnail, p.subtitle, p.metadata,
                 pp.amount as price, pp.currency_code
          FROM product p
          JOIN product_category_product pcp ON pcp.product_id = p.id
          LEFT JOIN product_variant pv ON pv.product_id = p.id AND pv.deleted_at IS NULL
          LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id
-         LEFT JOIN price pp ON pp.price_set_id = pvps.price_set_id AND pp.currency_code = ?
+         LEFT JOIN price pp ON pp.price_set_id = pvps.price_set_id 
+           AND (LOWER(pp.currency_code) = LOWER(?) OR pp.id = (
+             SELECT id FROM price p2 WHERE p2.price_set_id = pvps.price_set_id ORDER BY (LOWER(p2.currency_code) = LOWER(?)) DESC LIMIT 1
+           ))
          WHERE pcp.product_category_id IN (${categoryIds.map(() => "?").join(",")})
            AND p.id != ?
            AND p.status = 'published'
            AND p.deleted_at IS NULL
          LIMIT 10`,
-        [currency, ...categoryIds, productId]
+        [currency, currency, ...categoryIds, productId]
       )
-      relatedProducts = relatedResult.rows.map((p: any) => ({
-        id: p.id,
-        title: p.title,
-        handle: p.handle,
-        thumbnail: p.thumbnail,
-        subtitle: p.subtitle,
-        price: p.price ? parseFloat(p.price) : null,
-        currency_code: p.currency_code,
-      }))
+      relatedProducts = relatedResult.rows.map((p: any) => {
+        const pMeta = typeof p.metadata === "string" ? JSON.parse(p.metadata) : (p.metadata || {})
+        let price = p.price != null ? parseFloat(p.price) : null
+        if (price == null || isNaN(price)) {
+          const rawOdooPrice = pMeta.marka_price ?? pMeta.list_price ?? pMeta.price
+          if (rawOdooPrice != null && !isNaN(parseFloat(rawOdooPrice))) {
+            const num = parseFloat(rawOdooPrice)
+            price = num < 500 ? Math.round(num * 1000) : Math.round(num)
+          }
+        }
+        const relCurrency = (p.currency_code || currency).toLowerCase()
+        return {
+          id: p.id,
+          title: p.title,
+          handle: p.handle,
+          thumbnail: p.thumbnail,
+          subtitle: p.subtitle,
+          price: price,
+          calculated_price: price,
+          currency_code: relCurrency,
+        }
+      })
     }
 
     // Build specifications from metadata and product fields
@@ -243,31 +261,55 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       images.unshift({ id: "thumbnail", url: product.thumbnail, rank: -1 })
     }
 
-    // Build variants
+    // Build variants with fallback price resolution
     const variants = variantsResult.rows.map((v: any) => {
-      let price = v.price ? parseFloat(v.price) : null;
-      if (price == null) {
-        const vMeta = v.variant_metadata || {};
-        if (vMeta.odoo_price || metadata.marka_price) {
-          const rawPrice = parseFloat(vMeta.odoo_price || metadata.marka_price);
-          const multiplier = 1000;
-          price = Math.round(rawPrice * multiplier);
+      const vMeta = typeof v.variant_metadata === "string" 
+        ? (JSON.parse(v.variant_metadata) || {})
+        : (v.variant_metadata || {})
+
+      let price: number | null = v.price != null ? parseFloat(v.price) : null
+      
+      // Fallback to variant metadata or product metadata if price table is null
+      if (price == null || isNaN(price)) {
+        const rawOdooPrice = vMeta.odoo_price_amount != null
+          ? parseFloat(vMeta.odoo_price_amount) / 1000
+          : (vMeta.odoo_price ?? vMeta.list_price ?? vMeta.price ?? metadata.marka_price ?? metadata.list_price ?? metadata.price)
+
+        if (rawOdooPrice != null && !isNaN(parseFloat(rawOdooPrice))) {
+          const numPrice = parseFloat(rawOdooPrice)
+          price = numPrice < 500 ? Math.round(numPrice * 1000) : Math.round(numPrice)
         }
       }
-      
+
+      const currCode = (v.currency_code || currency).toLowerCase()
+
       return {
         id: v.id,
         title: v.title,
         sku: v.sku,
         barcode: v.barcode,
         price: price,
-        currency_code: v.currency_code || currency,
+        calculated_price: price != null ? { calculated_amount: price, currency_code: currCode } : null,
+        original_price: price,
+        currency_code: currCode,
+        prices: price != null ? [{ amount: price, currency_code: currCode }] : [],
         inventory_quantity: null, // Will be populated from stock
         allow_backorder: v.allow_backorder,
         weight: v.weight,
-        metadata: v.variant_metadata,
-      };
+        metadata: vMeta,
+      }
     })
+
+    // Determine top-level product price from first variant or metadata
+    const firstVariant = variants[0]
+    let mainPrice = firstVariant?.price ?? null
+    if (mainPrice == null && (metadata.marka_price || metadata.list_price || metadata.price)) {
+      const rawPrice = parseFloat(metadata.marka_price || metadata.list_price || metadata.price)
+      if (!isNaN(rawPrice)) {
+        mainPrice = rawPrice < 500 ? Math.round(rawPrice * 1000) : Math.round(rawPrice)
+      }
+    }
+    const mainCurrency = firstVariant?.currency_code || currency
 
     // Stock availability — check odoo_stock (primary), then stock_qty/stock_free_qty fallbacks
     const in_stock = (metadata.odoo_stock || metadata.stock_qty || metadata.stock_free_qty || 0) > 0
@@ -282,6 +324,13 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         status: product.status,
         created_at: product.created_at,
         updated_at: product.updated_at,
+
+        // TOP-LEVEL PRICE FIELDS (Crucial for mobile apps expecting product.price or calculated_price)
+        price: mainPrice,
+        calculated_price: mainPrice != null ? { calculated_amount: mainPrice, currency_code: mainCurrency } : null,
+        original_price: mainPrice,
+        currency_code: mainCurrency,
+        prices: mainPrice != null ? [{ amount: mainPrice, currency_code: mainCurrency }] : [],
 
         // Overview section (for "Overview" tab)
         overview,

@@ -166,11 +166,13 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
                 pv.metadata as variant_metadata, pp.amount as price, pp.currency_code
          FROM product_variant pv
          LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id
-         LEFT JOIN price pp ON pp.price_set_id = pvps.price_set_id AND pp.currency_code = ?
+         LEFT JOIN price pp ON pp.price_set_id = pvps.price_set_id 
+           AND (LOWER(pp.currency_code) = LOWER(?) OR pp.id = (
+             SELECT id FROM price p2 WHERE p2.price_set_id = pvps.price_set_id ORDER BY (LOWER(p2.currency_code) = LOWER(?)) DESC LIMIT 1
+           ))
          WHERE pv.product_id IN (${placeholders}) AND pv.deleted_at IS NULL
-         AND (pp.currency_code = ? OR pp.id IS NULL)
-         ORDER BY pv.product_id, pv.variant_rank ASC, pp.amount ASC`,
-        [currency.toLowerCase(), ...productIds, currency.toLowerCase()]
+         ORDER BY pv.product_id, pv.variant_rank ASC`,
+        [currency.toLowerCase(), currency.toLowerCase(), ...productIds]
       )
       const variants = variantsResult.rows || []
       
@@ -186,22 +188,37 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         }
         
         const pMeta = productMetadataMap[v.product_id] || {}
+        const vMeta = typeof v.variant_metadata === "string"
+          ? (JSON.parse(v.variant_metadata) || {})
+          : (v.variant_metadata || {})
+
+        let priceAmt: number | null = v.price != null ? parseFloat(v.price) : null
+        if (priceAmt == null || isNaN(priceAmt)) {
+          const rawPrice = vMeta.odoo_price_amount != null
+            ? parseFloat(vMeta.odoo_price_amount) / 1000
+            : (vMeta.odoo_price ?? vMeta.list_price ?? vMeta.price ?? pMeta.marka_price ?? pMeta.list_price ?? pMeta.price)
+          if (rawPrice != null && !isNaN(parseFloat(rawPrice))) {
+            const num = parseFloat(rawPrice)
+            priceAmt = num < 500 ? Math.round(num * 1000) : Math.round(num)
+          }
+        }
+
+        const currCode = (v.currency_code || currency).toLowerCase()
         let prices: any[] = []
-        if (v.price != null) {
-          prices = [{ amount: parseFloat(v.price), currency_code: v.currency_code || currency }]
-        } else if (pMeta.marka_price || v.variant_metadata?.odoo_price) {
-          const rawPrice = parseFloat(pMeta.marka_price || v.variant_metadata?.odoo_price)
-          const multiplier = 1000
-          prices = [{ amount: Math.round(rawPrice * multiplier), currency_code: currency }]
+        if (priceAmt != null) {
+          prices = [{ amount: priceAmt, currency_code: currCode }]
         }
         
         variantsByProduct[v.product_id].push({
           id: v.id,
           title: v.title,
           sku: v.sku,
+          price: priceAmt,
+          calculated_price: priceAmt != null ? { calculated_amount: priceAmt, currency_code: currCode } : null,
+          original_price: priceAmt,
           manage_inventory: v.manage_inventory,
           allow_backorder: v.allow_backorder,
-          metadata: v.variant_metadata,
+          metadata: vMeta,
           prices: prices,
         })
       })
@@ -213,6 +230,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       const variants = variantsByProduct[p.id] || []
       const firstVariant = variants[0]
       const firstPrice = firstVariant?.prices?.[0]
+      const price = firstVariant?.price ?? (firstPrice ? firstPrice.amount : null)
+      const mainCurrency = firstPrice?.currency_code || currency
       return {
         id: p.id,
         title: p.title,
@@ -220,8 +239,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         thumbnail: p.thumbnail,
         subtitle: p.subtitle,
         description: p.description,
-        price: firstPrice ? firstPrice.amount : null,
-        currency_code: firstPrice?.currency_code || currency,
+        price: price,
+        calculated_price: price != null ? { calculated_amount: price, currency_code: mainCurrency } : null,
+        original_price: price,
+        currency_code: mainCurrency,
         sku: firstVariant?.sku || null,
         images: imagesByProduct[p.id] || [],
         metadata: meta,

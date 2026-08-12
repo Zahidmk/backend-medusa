@@ -80,6 +80,41 @@ async function adminMultipartGuard(
   }
 }
 
+async function parseKnetUrlEncoded(
+  req: MedusaRequest,
+  res: MedusaResponse,
+  next: MedusaNextFunction
+) {
+  try {
+    const ct = (req.headers["content-type"] || "") as string
+    if (ct.includes("application/x-www-form-urlencoded")) {
+      let rawBody = ""
+      req.on("data", (chunk) => {
+        rawBody += chunk.toString()
+      })
+      req.on("end", () => {
+        try {
+          const params = new URLSearchParams(rawBody)
+          const bodyObj: Record<string, any> = {}
+          for (const [key, val] of params.entries()) {
+            bodyObj[key] = val
+          }
+          ;(req as any).body = bodyObj
+          ;(req as any).rawBody = rawBody
+        } catch (err) {
+          console.error("[KNET Middleware] Failed to parse urlencoded body", err)
+          ;(req as any).body = {}
+        }
+        next()
+      })
+      return
+    }
+  } catch (e) {
+    console.error("[KNET Middleware] Error reading request stream", e)
+  }
+  next()
+}
+
 export default defineMiddlewares({
   routes: [
     {
@@ -123,6 +158,12 @@ export default defineMiddlewares({
     {
       matcher: "/store/products/*/reviews",
       middlewares: [authenticate("customer", ["session", "bearer"], { allowUnauthenticated: true })],
+    },
+    {
+      // Disable Medusa's JSON body parser for KNET callback so urlencoded POST data is read cleanly
+      matcher: "/store/knet/callback*",
+      bodyParser: false,
+      middlewares: [parseKnetUrlEncoded],
     },
   ],
 })
