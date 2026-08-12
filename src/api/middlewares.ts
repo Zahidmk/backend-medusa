@@ -88,20 +88,6 @@ async function parseKnetUrlEncoded(
   try {
     console.log("[KNET Middleware] Callback request detected");
 
-    // Inject server-side MEDUSA_PUBLISHABLE_KEY for external KNET gateway callback if header is omitted
-    const envPublishableKey = process.env.MEDUSA_PUBLISHABLE_KEY;
-    if (!req.headers["x-publishable-api-key"]) {
-      if (envPublishableKey) {
-        req.headers["x-publishable-api-key"] = envPublishableKey;
-        console.log("[KNET Middleware] Publishable key injected: yes");
-      } else {
-        console.error("[KNET Middleware] MEDUSA_PUBLISHABLE_KEY is not configured");
-        console.log("[KNET Middleware] Publishable key injected: no");
-      }
-    } else {
-      console.log("[KNET Middleware] Publishable key injected: yes");
-    }
-
     const ct = (req.headers["content-type"] || "") as string;
     if (ct.includes("application/x-www-form-urlencoded")) {
       let rawBody = "";
@@ -165,6 +151,31 @@ export default defineMiddlewares({
       matcher: "/store/wishlist*",
       middlewares: [authenticate("customer", ["session", "bearer"])],
     },
+    {
+      matcher: "/store/carts/*/shipping-methods",
+      middlewares: [authenticate("customer", ["session", "bearer"], { allowUnauthenticated: true })],
+    },
+    {
+      matcher: "/store/carts/*/payment-sessions",
+      middlewares: [authenticate("customer", ["session", "bearer"], { allowUnauthenticated: true })],
+    },
+    {
+      matcher: "/store/carts/*",
+      middlewares: [authenticate("customer", ["session", "bearer"], { allowUnauthenticated: true })],
+    },
+    {
+      matcher: "/store/orders",
+      method: "POST",
+      middlewares: [authenticate("customer", ["session", "bearer"], { allowUnauthenticated: true })],
+    },
+    {
+      matcher: "/store/orders/me",
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
+      matcher: "/store/orders/*",
+      middlewares: [authenticate("customer", ["session", "bearer"], { allowUnauthenticated: true })],
+    },
     // Customer cancel order - must be authenticated and own the order
     {
       matcher: "/store/orders/*/cancel",
@@ -177,7 +188,7 @@ export default defineMiddlewares({
     },
     {
       // Disable Medusa's JSON body parser for KNET POST callback so urlencoded data is read cleanly
-      matcher: "/store/knet/callback",
+      matcher: "/knet/callback",
       method: "POST",
       bodyParser: false,
       middlewares: [parseKnetUrlEncoded],

@@ -64,8 +64,8 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
         amount: finalAmount,
         trackId: trackId,
         cartId: cartId,
-        responseUrl: `${frontendBase}/store/knet/callback`,
-        errorUrl: `${frontendBase}/store/knet/callback`, // Both go to the same callback for backend verification
+        responseUrl: `${frontendBase}/knet/callback`,
+        errorUrl: `${frontendBase}/knet/callback`, // Both go to the same callback for backend verification
       });
 
       return {

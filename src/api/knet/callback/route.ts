@@ -1,6 +1,9 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { Modules } from "@medusajs/framework/utils";
-import { KnetRawClient } from "../../../../modules/knet-payment/knet-client";
+import { KnetRawClient } from "../../../modules/knet-payment/knet-client";
+
+// Opt out of default authentication middleware for external payment gateway callback
+export const AUTHENTICATE = false;
 
 async function handleKnetCallback(req: MedusaRequest, res: MedusaResponse) {
   const contentType = (req.headers["content-type"] || "") as string;
@@ -201,4 +204,3 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
 export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
   return handleKnetCallback(req, res);
 };
-
