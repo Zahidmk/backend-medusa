@@ -10,7 +10,9 @@ import {
 } from "@medusajs/framework/types";
 import { Modules } from "@medusajs/framework/utils";
 
-export default async function odooSyncJob({ container }: { container: MedusaContainer }) {
+export default async function odooSyncJob(containerOrObj: any) {
+  const container: MedusaContainer = containerOrObj?.resolve ? containerOrObj : containerOrObj?.container;
+  if (!container) return;
   const logger = container.resolve("logger" as any);
   const pgConnection = container.resolve("pgConnection" as any);
   const productService = container.resolve(Modules.PRODUCT);
@@ -253,5 +255,5 @@ async function updateLastSync(pgConnection: any, logger: any) {
 
 export const config = {
   name: "odoo-product-sync",
-  schedule: "0 0 1 1 *", // Disabled: Relying on Odoo webhooks instead
+  schedule: "0 3 * * *", // Daily at 3:00 AM (86,400,000 ms delay, safely fits within Node 32-bit signed int limit)
 };

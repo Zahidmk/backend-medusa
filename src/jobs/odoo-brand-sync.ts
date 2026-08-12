@@ -4,7 +4,9 @@ import { BRAND_MODULE } from "../modules/brands";
 import fs from "fs";
 import path from "path";
 
-export default async function odooBrandSyncJob({ container }: { container: MedusaContainer }) {
+export default async function odooBrandSyncJob(containerOrObj: any) {
+  const container: MedusaContainer = containerOrObj?.resolve ? containerOrObj : containerOrObj?.container;
+  if (!container) return;
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER);
   const pgConnection = container.resolve(ContainerRegistrationKeys.PG_CONNECTION);
   
@@ -102,5 +104,5 @@ export default async function odooBrandSyncJob({ container }: { container: Medus
 
 export const config = {
   name: "odoo-brand-sync",
-  schedule: "*/15 * * * *", // Every 15 minutes
+  schedule: "0 5 * * *", // Daily at 5:00 AM (86,400,000 ms delay, safely fits within Node 32-bit signed int limit)
 };

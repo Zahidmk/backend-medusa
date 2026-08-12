@@ -28,7 +28,9 @@ const EXCLUDED_CATEGORY_PATTERNS = [
   'old category', 'deprecated', 'draft'
 ]
 
-export default async function odooCategorySyncJob({ container }: { container: MedusaContainer }) {
+export default async function odooCategorySyncJob(containerOrObj: any) {
+  const container: MedusaContainer = containerOrObj?.resolve ? containerOrObj : containerOrObj?.container
+  if (!container) return
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER)
   const pgConnection = container.resolve(ContainerRegistrationKeys.PG_CONNECTION)
   const productService = container.resolve(Modules.PRODUCT)
@@ -198,5 +200,5 @@ export default async function odooCategorySyncJob({ container }: { container: Me
 
 export const config = {
   name: "odoo-category-sync",
-  schedule: "0 0 1 1 *", // Disabled: Runs only once a year on Jan 1st
+  schedule: "0 4 * * *", // Daily at 4:00 AM (86,400,000 ms delay, safely fits within Node 32-bit signed int limit)
 }
