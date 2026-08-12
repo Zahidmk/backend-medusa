@@ -85,48 +85,67 @@ function parseKnetRawBody(rawBody: string): Record<string, any> {
 
   const trimmed = rawBody.trim();
 
-  // Strategy 1: Standard URLSearchParams (for form-urlencoded, query strings, or key=value pairs)
+  // Strategy 1: Direct Raw Hexadecimal Encrypted Payload (KNET POSTs raw hex string directly in request body)
+  if (/^[0-9A-Fa-f]{32,}$/.test(trimmed) && trimmed.length % 2 === 0) {
+    result.trandata = trimmed;
+    result._rawFormat = "raw-trandata-hex";
+    return result;
+  }
+
+  // Strategy 2: Standard URLSearchParams (for form-urlencoded, query strings, or key=value pairs)
   try {
     const params = new URLSearchParams(trimmed);
     for (const [key, val] of params.entries()) {
       if (key && val && !key.startsWith("<")) {
         result[key] = val;
+        result[key.toLowerCase()] = val;
       }
     }
   } catch { /* ignore */ }
 
-  // Strategy 2: Robust HTML Tag & Input Parser (case-insensitive for <INPUT>, <input>, any attribute ordering)
-  if (!result.trandata) {
-    const inputTagRegex = /<input\b[^>]*>/gi;
-    let match: RegExpExecArray | null;
-    while ((match = inputTagRegex.exec(trimmed)) !== null) {
-      const tagStr = match[0];
-      const nameMatch = /name=["']?([^"'\s/>]+)["']?/i.exec(tagStr);
-      const valMatch = /value=["']?([^"'\s/>]+)["']?/i.exec(tagStr);
-      if (nameMatch && nameMatch[1] && valMatch && valMatch[1] !== undefined) {
-        const name = nameMatch[1];
-        const val = valMatch[1];
-        result[name] = val;
-        result[name.toLowerCase()] = val;
-      }
+  if (result.trandata) {
+    result._rawFormat = "url-encoded";
+    return result;
+  }
+
+  // Strategy 3: Robust HTML Tag & Input Parser (case-insensitive for <INPUT>, <input>, any attribute ordering)
+  const inputTagRegex = /<input\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = inputTagRegex.exec(trimmed)) !== null) {
+    const tagStr = match[0];
+    const nameMatch = /name=["']?([^"'\s/>]+)["']?/i.exec(tagStr);
+    const valMatch = /value=["']?([^"'\s/>]+)["']?/i.exec(tagStr);
+    if (nameMatch && nameMatch[1] && valMatch && valMatch[1] !== undefined) {
+      const name = nameMatch[1];
+      const val = valMatch[1];
+      result[name] = val;
+      result[name.toLowerCase()] = val;
     }
   }
 
-  // Strategy 3: Key-Value regex scanner anywhere in body (e.g. trandata=... or paymentid=...)
-  if (!result.trandata) {
-    const kvRegex = /([a-zA-Z0-9_\-]+)=(?:["']([^"']*)["']|([^\s&<>]+))/g;
-    let kvMatch: RegExpExecArray | null;
-    while ((kvMatch = kvRegex.exec(trimmed)) !== null) {
-      const key = kvMatch[1];
-      const val = kvMatch[2] !== undefined ? kvMatch[2] : kvMatch[3];
-      if (key && val && !key.startsWith("<") && !result[key]) {
-        result[key] = val;
-        result[key.toLowerCase()] = val;
-      }
+  if (result.trandata) {
+    result._rawFormat = "html-input";
+    return result;
+  }
+
+  // Strategy 4: Key-Value regex scanner anywhere in body (e.g. trandata=... or paymentid=...)
+  const kvRegex = /([a-zA-Z0-9_\-]+)=(?:["']([^"']*)["']|([^\s&<>]+))/g;
+  let kvMatch: RegExpExecArray | null;
+  while ((kvMatch = kvRegex.exec(trimmed)) !== null) {
+    const key = kvMatch[1];
+    const val = kvMatch[2] !== undefined ? kvMatch[2] : kvMatch[3];
+    if (key && val && !key.startsWith("<") && !result[key]) {
+      result[key] = val;
+      result[key.toLowerCase()] = val;
     }
   }
 
-  // Strategy 4: HTML Error page detection (if KNET test portal returned an HTML error page)
+  if (result.trandata) {
+    result._rawFormat = "regex-match";
+    return result;
+  }
+
+  // Strategy 5: HTML Error page detection (if KNET test portal returned an HTML error page)
   if (!result.trandata && !result.ErrorText && !result.errortext) {
     const titleMatch = /<title[^>]*>([^<]+)<\/title>/i.exec(trimmed);
     const bodyTextMatch = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(trimmed);
@@ -134,6 +153,7 @@ function parseKnetRawBody(rawBody: string): Record<string, any> {
       const pageText = (titleMatch?.[1] || "") + " " + (bodyTextMatch?.[1] || "").replace(/<[^>]+>/g, " ");
       if (/error|cancel|invalid|fail/i.test(pageText)) {
         result.ErrorText = pageText.replace(/\s+/g, " ").trim().substring(0, 200);
+        result._rawFormat = "html-error-page";
       }
     }
   }
@@ -158,20 +178,10 @@ async function parseKnetUrlEncoded(
     req.on("end", () => {
       try {
         const trimmed = rawBody.trim();
-        const startsWithHtml = trimmed.startsWith("<");
-        const hasTrandataStr = /trandata/i.test(trimmed);
-        const hasErrorStr = /error/i.test(trimmed);
-        const preview = getSanitizedRawBodyPreview(trimmed);
+        const parsedObj = parseKnetRawBody(rawBody);
 
         console.log(`[KNET Middleware] Raw body length: ${rawBody.length}`);
-        console.log(`[KNET Middleware] Starts with HTML: ${startsWithHtml ? "yes" : "no"}`);
-        console.log(`[KNET Middleware] Contains 'trandata' string: ${hasTrandataStr ? "yes" : "no"}`);
-        console.log(`[KNET Middleware] Contains 'Error' string: ${hasErrorStr ? "yes" : "no"}`);
-        console.log(`[KNET Middleware] Sanitized preview: ${preview}`);
-
-        const parsedObj = parseKnetRawBody(rawBody);
-        
-        console.log(`[KNET Middleware] Parsed body keys: ${Object.keys(parsedObj).join(", ")}`);
+        console.log(`[KNET Middleware] Raw body format: ${parsedObj._rawFormat || "unknown"}`);
         console.log(`[KNET Middleware] trandata present: ${parsedObj.trandata ? "yes" : "no"}`);
 
         ;(req as any).body = parsedObj;

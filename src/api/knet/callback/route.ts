@@ -21,18 +21,24 @@ async function handleKnetCallback(req: MedusaRequest, res: MedusaResponse) {
     // Secondary fail-safe if trandata is missing but rawBody exists
     if (!payload.trandata && (req as any).rawBody) {
       const rawStr = String((req as any).rawBody).trim();
-      try {
-        const params = new URLSearchParams(rawStr);
-        for (const [key, val] of params.entries()) {
-          if (key && val && !payload[key]) payload[key] = val;
-        }
-      } catch { /* ignore */ }
       
-      if (!payload.trandata) {
-        const inputRegex = /<input\s+[^>]*name=["']?([^"'\s>]+)["']?[^>]*value=["']?([^"'\s>]*)["']?[^>]*>/gi;
-        let match: RegExpExecArray | null;
-        while ((match = inputRegex.exec(rawStr)) !== null) {
-          if (match[1] && match[2] && !payload[match[1]]) payload[match[1]] = match[2];
+      // If rawBody is a direct raw hex encrypted payload
+      if (/^[0-9A-Fa-f]{32,}$/.test(rawStr) && rawStr.length % 2 === 0) {
+        payload.trandata = rawStr;
+      } else {
+        try {
+          const params = new URLSearchParams(rawStr);
+          for (const [key, val] of params.entries()) {
+            if (key && val && !payload[key]) payload[key] = val;
+          }
+        } catch { /* ignore */ }
+        
+        if (!payload.trandata) {
+          const inputRegex = /<input\s+[^>]*name=["']?([^"'\s>]+)["']?[^>]*value=["']?([^"'\s>]*)["']?[^>]*>/gi;
+          let match: RegExpExecArray | null;
+          while ((match = inputRegex.exec(rawStr)) !== null) {
+            if (match[1] && match[2] && !payload[match[1]]) payload[match[1]] = match[2];
+          }
         }
       }
     }
