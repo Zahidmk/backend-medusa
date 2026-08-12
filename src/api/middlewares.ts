@@ -86,33 +86,49 @@ async function parseKnetUrlEncoded(
   next: MedusaNextFunction
 ) {
   try {
-    const ct = (req.headers["content-type"] || "") as string
+    console.log("[KNET Middleware] Callback request detected");
+
+    // Inject server-side MEDUSA_PUBLISHABLE_KEY for external KNET gateway callback if header is omitted
+    const envPublishableKey = process.env.MEDUSA_PUBLISHABLE_KEY;
+    if (!req.headers["x-publishable-api-key"]) {
+      if (envPublishableKey) {
+        req.headers["x-publishable-api-key"] = envPublishableKey;
+        console.log("[KNET Middleware] Publishable key injected: yes");
+      } else {
+        console.error("[KNET Middleware] MEDUSA_PUBLISHABLE_KEY is not configured");
+        console.log("[KNET Middleware] Publishable key injected: no");
+      }
+    } else {
+      console.log("[KNET Middleware] Publishable key injected: yes");
+    }
+
+    const ct = (req.headers["content-type"] || "") as string;
     if (ct.includes("application/x-www-form-urlencoded")) {
-      let rawBody = ""
+      let rawBody = "";
       req.on("data", (chunk) => {
-        rawBody += chunk.toString()
-      })
+        rawBody += chunk.toString();
+      });
       req.on("end", () => {
         try {
-          const params = new URLSearchParams(rawBody)
-          const bodyObj: Record<string, any> = {}
+          const params = new URLSearchParams(rawBody);
+          const bodyObj: Record<string, any> = {};
           for (const [key, val] of params.entries()) {
-            bodyObj[key] = val
+            bodyObj[key] = val;
           }
-          ;(req as any).body = bodyObj
-          ;(req as any).rawBody = rawBody
+          ;(req as any).body = bodyObj;
+          ;(req as any).rawBody = rawBody;
         } catch (err) {
-          console.error("[KNET Middleware] Failed to parse urlencoded body", err)
-          ;(req as any).body = {}
+          console.error("[KNET Middleware] Failed to parse urlencoded body", err);
+          ;(req as any).body = {};
         }
-        next()
-      })
-      return
+        next();
+      });
+      return;
     }
   } catch (e) {
-    console.error("[KNET Middleware] Error reading request stream", e)
+    console.error("[KNET Middleware] Error reading request stream", e);
   }
-  next()
+  next();
 }
 
 export default defineMiddlewares({
