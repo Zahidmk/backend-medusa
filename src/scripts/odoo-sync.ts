@@ -210,6 +210,12 @@ export default async function odooSync({ container }: ExecArgs) {
   const existingBySku = new Map<string, string>()
   for (const row of skuRes.rows || []) existingBySku.set(row.sku.trim(), row.product_id)
 
+  const barcodeRes = await pg.raw(`SELECT pv.barcode FROM product_variant pv JOIN product p ON p.id = pv.product_id WHERE pv.barcode IS NOT NULL AND pv.barcode != '' AND p.deleted_at IS NULL AND pv.deleted_at IS NULL`)
+  const existingBarcodes = new Set<string>()
+  for (const row of barcodeRes.rows || []) {
+    if (row.barcode) existingBarcodes.add(String(row.barcode).trim())
+  }
+
   const scRes = await pg.raw(`SELECT id FROM sales_channel WHERE deleted_at IS NULL LIMIT 1`)
   const salesChannelId = scRes.rows?.[0]?.id || null
 
@@ -327,11 +333,31 @@ export default async function odooSync({ container }: ExecArgs) {
           [productId, p.name, handle, p.description_sale || "", imageUrl, status, p.weight ? String(p.weight) : null, metadata]
         )
 
+        let barcode = (typeof p.barcode === "string" && p.barcode.trim()) ? p.barcode.trim() : null
+        if (barcode) {
+          if (existingBarcodes.has(barcode)) {
+            barcode = null
+          } else {
+            existingBarcodes.add(barcode)
+          }
+        }
+
         const variantId = genId("variant")
-        await pg.raw(
-          `INSERT INTO product_variant (id,product_id,title,sku,barcode,manage_inventory,allow_backorder,variant_rank,created_at,updated_at) VALUES (?,?,'Default',?,?,true,false,0,NOW(),NOW())`,
-          [variantId, productId, sku, p.barcode || null]
-        )
+        try {
+          await pg.raw(
+            `INSERT INTO product_variant (id,product_id,title,sku,barcode,manage_inventory,allow_backorder,variant_rank,created_at,updated_at) VALUES (?,?,'Default',?,?,true,false,0,NOW(),NOW())`,
+            [variantId, productId, sku, barcode]
+          )
+        } catch (vErr: any) {
+          if (vErr.message?.includes("IDX_product_variant_barcode_unique") || vErr.code === "23505") {
+            await pg.raw(
+              `INSERT INTO product_variant (id,product_id,title,sku,barcode,manage_inventory,allow_backorder,variant_rank,created_at,updated_at) VALUES (?,?,'Default',?,NULL,true,false,0,NOW(),NOW())`,
+              [variantId, productId, sku]
+            )
+          } else {
+            throw vErr
+          }
+        }
 
         // Assign Shipping Profile
         if (shippingProfileId) {
