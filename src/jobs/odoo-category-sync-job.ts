@@ -87,9 +87,12 @@ export default async function odooCategorySyncJob(containerOrObj: any) {
     const processCategory = async (oCategory: any, parentMedusaId: string | null) => {
       try {
         const handle = slugify(oCategory.name)
-        odooIdToHandle.set(oCategory.id, handle)
-
-        const metadata = { odoo_id: oCategory.id }
+        const odooUrl = (process.env.ODOO_URL || "").replace(/\/$/, "")
+        const imageUrl = `${odooUrl}/web/image/product.public.category/${oCategory.id}/image_1920`
+        const metadata = { 
+          odoo_id: oCategory.id,
+          image_url: imageUrl,
+        }
 
         const existing = await pgConnection.raw(
           `SELECT id FROM product_category WHERE handle = ? LIMIT 1`,

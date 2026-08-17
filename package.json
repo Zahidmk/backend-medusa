@@ -44,7 +44,7 @@
     "sync:images": "medusa exec ./src/scripts/sync-odoo-images.ts",
     "sync:orders": "medusa exec ./src/scripts/sync-odoo-orders.ts",
     "sync:customers": "medusa exec ./src/scripts/sync-odoo-customers.ts",
-    "sync:categories": "medusa exec ./src/scripts/sync-odoo-categories.ts",
+    "sync:categories": "medusa exec ./src/scripts/sync-brands-categories.ts",
     "sync:all": "npm run setup:store && npm run sync:odoo && npm run sync:images && npm run sync:customers && npm run sync:categories && npm run sync:inventory",
     "test:integration:http": "TEST_TYPE=integration:http NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
     "test:integration:modules": "TEST_TYPE=integration:modules NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
