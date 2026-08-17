@@ -49,8 +49,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       const odooUrl = ODOO_CONFIG.url
       let imageUrl = meta.image_url || null
       
-      if (!imageUrl && odooId && odooUrl) {
-        imageUrl = `${odooUrl}/web/image/product.public.category/${odooId}/image_1920`
+      if (imageUrl && odooUrl) {
+        // Dynamically replace any old odoo domain/subdomain with current ODOO_CONFIG.url
+        imageUrl = imageUrl.replace(/https:\/\/[^\/]+\.(dev\.)?odoo\.com/, odooUrl)
+      } else if (!imageUrl && odooId && odooUrl) {
+        const model = meta.odoo_model || "product.public.category"
+        imageUrl = `${odooUrl}/web/image/${model}/${odooId}/image_1920`
       }
 
       categoryMap[cat.id] = {

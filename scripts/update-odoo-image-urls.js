@@ -45,8 +45,8 @@ async function run() {
     console.log('\n--- Updating image table ---');
     const imageRes = await client.query(`
       UPDATE image
-      SET url = regexp_replace(url, 'https://oskarllc-[^/]+', $1, 'g')
-      WHERE url LIKE '%dev.odoo.com%' AND url NOT LIKE $2
+      SET url = regexp_replace(url, 'https://[^/]+\\.(dev\\.)?odoo\\.com', $1, 'g')
+      WHERE (url LIKE '%odoo.com%' OR url LIKE '%dev.odoo.com%') AND url NOT LIKE $2
       RETURNING id, url;
     `, [targetOdooUrl, `${targetOdooUrl}%`]);
     console.log(`Updated ${imageRes.rowCount} rows in image table.`);
@@ -55,8 +55,8 @@ async function run() {
     console.log('\n--- Updating product table (thumbnail) ---');
     const productRes = await client.query(`
       UPDATE product
-      SET thumbnail = regexp_replace(thumbnail, 'https://oskarllc-[^/]+', $1, 'g')
-      WHERE thumbnail LIKE '%dev.odoo.com%' AND thumbnail NOT LIKE $2
+      SET thumbnail = regexp_replace(thumbnail, 'https://[^/]+\\.(dev\\.)?odoo\\.com', $1, 'g')
+      WHERE (thumbnail LIKE '%odoo.com%' OR thumbnail LIKE '%dev.odoo.com%') AND thumbnail NOT LIKE $2
       RETURNING id, thumbnail;
     `, [targetOdooUrl, `${targetOdooUrl}%`]);
     console.log(`Updated ${productRes.rowCount} rows in product table.`);
@@ -66,8 +66,8 @@ async function run() {
     try {
       const brandRes = await client.query(`
         UPDATE brand
-        SET image_url = regexp_replace(image_url, 'https://oskarllc-[^/]+', $1, 'g')
-        WHERE image_url LIKE '%dev.odoo.com%' AND image_url NOT LIKE $2
+        SET image_url = regexp_replace(image_url, 'https://[^/]+\\.(dev\\.)?odoo\\.com', $1, 'g')
+        WHERE (image_url LIKE '%odoo.com%' OR image_url LIKE '%dev.odoo.com%') AND image_url NOT LIKE $2
         RETURNING id, image_url;
       `, [targetOdooUrl, `${targetOdooUrl}%`]);
       console.log(`Updated ${brandRes.rowCount} rows in brand table.`);
@@ -83,9 +83,9 @@ async function run() {
         SET metadata = jsonb_set(
           metadata,
           '{image_url}',
-          to_jsonb(regexp_replace(metadata->>'image_url', 'https://oskarllc-[^/]+', $1, 'g'))
+          to_jsonb(regexp_replace(metadata->>'image_url', 'https://[^/]+\\.(dev\\.)?odoo\\.com', $1, 'g'))
         )
-        WHERE metadata->>'image_url' LIKE '%dev.odoo.com%' AND metadata->>'image_url' NOT LIKE $2
+        WHERE (metadata->>'image_url' LIKE '%odoo.com%' OR metadata->>'image_url' LIKE '%dev.odoo.com%') AND metadata->>'image_url' NOT LIKE $2
         RETURNING id, metadata;
       `, [targetOdooUrl, `${targetOdooUrl}%`]);
       console.log(`Updated ${catRes.rowCount} rows in product_category metadata.`);
