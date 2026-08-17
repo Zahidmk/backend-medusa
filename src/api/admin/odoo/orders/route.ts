@@ -1,10 +1,12 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import axios from "axios"
 
-const ODOO_URL = process.env.ODOO_URL || "https://oskarllc-new-31031096.dev.odoo.com"
-const ODOO_DB = process.env.ODOO_DB_NAME || "oskarllc-new-31031096"
-const ODOO_USER = process.env.ODOO_USERNAME || "SYG"
-const ODOO_PASS = process.env.ODOO_PASSWORD || "S123456"
+import { ODOO_CONFIG } from "../../../../config/odoo"
+
+const ODOO_URL = ODOO_CONFIG.url
+const ODOO_DB = ODOO_CONFIG.dbName
+const ODOO_USER = ODOO_CONFIG.username
+const ODOO_PASS = ODOO_CONFIG.password
 
 /**
  * GET /admin/odoo/orders - Fetch orders from Odoo

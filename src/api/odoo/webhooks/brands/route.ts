@@ -3,6 +3,7 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { BRAND_MODULE } from "../../../../modules/brands"
 import fs from "fs"
 import path from "path"
+import { ODOO_CONFIG } from "../../../../config/odoo"
 
 /**
  * POST /odoo/webhooks/brands
@@ -49,7 +50,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
   }
 
   // 3. Process logo: use direct Odoo API URL
-  const odooUrl = (process.env.ODOO_URL || "https://oskarllc-new-35045199.dev.odoo.com").replace(/\/$/, '')
+  const odooUrl = ODOO_CONFIG.url
   let logoUrl: string | null = null
 
   if (brandData.id) {

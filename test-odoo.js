@@ -1,10 +1,12 @@
 const axios = require('axios');
 
+require('dotenv').config();
+
 async function testOdoo() {
-  const url = "https://oskarllc-new-35045199.dev.odoo.com";
-  const db = "oskarllc-new-35045199";
-  const username = "SYG";
-  const password = "123";
+  const url = (process.env.ODOO_URL || "").replace(/\/$/, "");
+  const db = process.env.ODOO_DB_NAME || "";
+  const username = process.env.ODOO_USERNAME || "";
+  const password = process.env.ODOO_PASSWORD || process.env.ODOO_API_KEY || "";
 
   try {
     const authResult = await axios.post(`${url}/jsonrpc`, {

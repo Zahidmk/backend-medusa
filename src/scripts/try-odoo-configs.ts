@@ -16,18 +16,8 @@ interface Config {
 
 // All possible configurations to try
 const CONFIGS: Config[] = [
-  // Main hosting server with different DB name patterns
+  { url: (process.env.ODOO_URL || "").replace(/\/$/, ""), db: process.env.ODOO_DB_NAME || "" },
   { url: "https://me281a.odoo.com", db: "me281a" },
-  { url: "https://me281a.odoo.com", db: "oskarllc" },
-  { url: "https://me281a.odoo.com", db: "oskarllc-stage" },
-  { url: "https://me281a.odoo.com", db: "stage" },
-  { url: "https://me281a.odoo.com", db: "production" },
-  { url: "https://me281a.odoo.com", db: "odoo" },
-  { url: "https://me281a.odoo.com", db: "main" },
-  { url: "https://me281a.odoo.com", db: "default" },
-  // Original URL patterns (in case they work)
-  { url: "https://oskarllc-stage-27028831.dev.odoo.com", db: "oskarllc-stage-27028831" },
-  { url: "https://oskarllc.odoo.com", db: "oskarllc" },
 ]
 
 /**

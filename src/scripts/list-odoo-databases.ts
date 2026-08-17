@@ -8,9 +8,9 @@ import https from "https"
 
 // Odoo server URLs to try
 const URLS_TO_TRY = [
+  (process.env.ODOO_URL || "").replace(/\/$/, ""),
   "https://me281a.odoo.com",
-  "https://oskarllc-stage-27028831.dev.odoo.com",
-]
+].filter(Boolean)
 
 /**
  * Create axios client for Odoo JSON-RPC
@@ -118,9 +118,11 @@ async function main() {
   
   // Also try the exact URL from credentials
   console.log("\n--- Trying original URL ---")
-  const originalUrl = "https://oskarllc-stage-27028831.dev.odoo.com"
-  await getDatabaseInfo(originalUrl)
-  await listDatabases(originalUrl)
+  const originalUrl = (process.env.ODOO_URL || "").replace(/\/$/, "")
+  if (originalUrl) {
+    await getDatabaseInfo(originalUrl)
+    await listDatabases(originalUrl)
+  }
 }
 
 main()

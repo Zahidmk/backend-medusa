@@ -18,21 +18,27 @@ const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
 
-// ── Config ──
-const ODOO_URL = process.env.ODOO_URL || 'https://oskarllc-new-35045199.dev.odoo.com';
-const ODOO_DB = process.env.ODOO_DB_NAME || 'oskarllc-new-35045199';
-const ODOO_USER = process.env.ODOO_USERNAME || 'SYG';
-const ODOO_PASS = process.env.ODOO_API_KEY || '2a420f7cb6d0c1c8f73368131f025f638c30704e';
-
 const IS_PROD = fs.existsSync('/var/www/marqa-souq/frontend/markasouq-web/public/brands');
 const OUT_DIR = IS_PROD
   ? '/var/www/marqa-souq/frontend/markasouq-web/public/brands'
   : path.join(__dirname, '..', 'frontend', 'markasouq-web', 'public', 'brands');
 
-// PostgreSQL — read from .env
+// PostgreSQL & Env — read from .env
 const dotenvPath = IS_PROD
   ? '/var/www/marqa-souq/backend/backend-medusa/.env'
   : path.join(__dirname, '..', '.env');
+
+if (fs.existsSync(dotenvPath)) {
+  require('dotenv').config({ path: dotenvPath });
+} else {
+  require('dotenv').config();
+}
+
+// ── Config ──
+const ODOO_URL = (process.env.ODOO_URL || '').replace(/\/$/, '');
+const ODOO_DB = process.env.ODOO_DB_NAME || '';
+const ODOO_USER = process.env.ODOO_USERNAME || '';
+const ODOO_PASS = process.env.ODOO_API_KEY || process.env.ODOO_PASSWORD || '';
 
 let DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL && fs.existsSync(dotenvPath)) {

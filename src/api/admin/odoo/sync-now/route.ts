@@ -6,12 +6,13 @@
 
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import https from "https"
+import { ODOO_CONFIG as CentralOdooConfig } from "../../../../config/odoo"
 
 const ODOO_CONFIG = {
-  url: process.env.ODOO_URL || "https://oskarllc-new-31031096.dev.odoo.com",
-  db: process.env.ODOO_DB_NAME || "oskarllc-new-31031096",
-  username: process.env.ODOO_USERNAME || "SYG",
-  password: process.env.ODOO_PASSWORD || "S123456",
+  url: CentralOdooConfig.url,
+  db: CentralOdooConfig.dbName,
+  username: CentralOdooConfig.username,
+  password: CentralOdooConfig.password,
 }
 
 async function odooJsonRpc(params: any): Promise<any> {

@@ -11,10 +11,10 @@ import type { IncomingMessage } from "http"
 
 // Direct Odoo config
 const ODOO_CONFIG = {
-    url: 'https://oskarllc-new-31031096.dev.odoo.com',
-    db: 'oskarllc-new-31031096',
-    username: 'SYG',
-    api_key: 'fa8410bdf3264b91ea393b9f8341626a98ca262a'
+    url: (process.env.ODOO_URL || '').replace(/\/$/, ''),
+    db: process.env.ODOO_DB_NAME || '',
+    username: process.env.ODOO_USERNAME || '',
+    api_key: process.env.ODOO_API_KEY || process.env.ODOO_PASSWORD || ''
 };
 
 const https = require('https');

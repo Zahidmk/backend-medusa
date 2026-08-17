@@ -1,5 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import { ODOO_CONFIG } from "../../../../config/odoo"
 
 /**
  * GET /store/categories/tree
@@ -45,11 +46,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         : (cat.metadata || {})
         
       const odooId = meta.odoo_id
-      const odooUrl = process.env.ODOO_URL || "https://oskarllc-new-31031096.dev.odoo.com"
+      const odooUrl = ODOO_CONFIG.url
       let imageUrl = meta.image_url || null
       
-      if (!imageUrl && odooId) {
-        imageUrl = `${odooUrl.replace(/\/$/, '')}/web/image/product.public.category/${odooId}/image_1920`
+      if (!imageUrl && odooId && odooUrl) {
+        imageUrl = `${odooUrl}/web/image/product.public.category/${odooId}/image_1920`
       }
 
       categoryMap[cat.id] = {

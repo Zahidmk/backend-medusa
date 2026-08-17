@@ -5,10 +5,12 @@
 const axios = require('axios');
 const https = require('https');
 
-const ODOO_URL = 'https://oskarllc-new-31031096.dev.odoo.com';
-const ODOO_DB = 'oskarllc-new-31031096';
-const ODOO_USER = 'SYG';
-const ODOO_PASS = '2a420f7cb6d0c1c8f73368131f025f638c30704e';
+require('dotenv').config();
+
+const ODOO_URL = (process.env.ODOO_URL || '').replace(/\/$/, '');
+const ODOO_DB = process.env.ODOO_DB_NAME || '';
+const ODOO_USER = process.env.ODOO_USERNAME || '';
+const ODOO_PASS = process.env.ODOO_API_KEY || process.env.ODOO_PASSWORD || '';
 
 const client = axios.create({
   baseURL: ODOO_URL,

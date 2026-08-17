@@ -1,11 +1,12 @@
 import { ExecArgs } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import { ODOO_CONFIG } from "../config/odoo"
 
 /**
  * Update Brand Logo URLs to point directly to Odoo
  * 
  * Replaces any local /static/uploads/ relative URLs with direct Odoo image URLs
- * e.g. https://oskarllc-new-35045199.dev.odoo.com/web/image/custom.product.brand/:id/image_1920
+ * e.g. {ODOO_URL}/web/image/custom.product.brand/:id/image_1920
  * 
  * Usage: npx medusa exec ./src/scripts/update-brands-odoo-urls.ts
  */
@@ -20,7 +21,7 @@ export default async function updateBrandsOdooUrls({ container }: ExecArgs) {
     try { odooSyncService = container.resolve("odooSyncService") } catch {}
   }
 
-  const odooUrl = (process.env.ODOO_URL || "https://oskarllc-new-35045199.dev.odoo.com").replace(/\/$/, '')
+  const odooUrl = ODOO_CONFIG.url
 
   logger.info("🔄 Fetching brands from Odoo to map direct Odoo image URLs...")
 

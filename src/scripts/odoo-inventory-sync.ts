@@ -25,10 +25,10 @@ export default async function odooInventorySync({ container }: ExecArgs) {
   console.log("=" .repeat(50))
   
   // Get configuration from environment
-  const odooUrl = process.env.ODOO_URL || "https://oskarllc-new-31031096.dev.odoo.com"
-  const odooDb = process.env.ODOO_DB_NAME || "oskarllc-new-31031096"
-  const odooUsername = process.env.ODOO_USERNAME || "SYG"
-  const odooPassword = process.env.ODOO_PASSWORD || "S123456"
+  const odooUrl = (process.env.ODOO_URL || "").replace(/\/$/, "")
+  const odooDb = process.env.ODOO_DB_NAME || ""
+  const odooUsername = process.env.ODOO_USERNAME || ""
+  const odooPassword = process.env.ODOO_PASSWORD || process.env.ODOO_API_KEY || ""
   
   console.log(`📡 Odoo URL: ${odooUrl}`)
   console.log(`📁 Database: ${odooDb}`)

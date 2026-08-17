@@ -3,6 +3,7 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 import { BRAND_MODULE } from "../modules/brands";
 import fs from "fs";
 import path from "path";
+import { ODOO_CONFIG } from "../config/odoo";
 
 export default async function odooBrandSyncJob(containerOrObj: any) {
   const container: MedusaContainer = containerOrObj?.resolve ? containerOrObj : containerOrObj?.container;
@@ -48,7 +49,7 @@ export default async function odooBrandSyncJob(containerOrObj: any) {
         fs.mkdirSync(outDir, { recursive: true });
     }
 
-    const odooUrl = (process.env.ODOO_URL || "https://oskarllc-new-35045199.dev.odoo.com").replace(/\/$/, '')
+    const odooUrl = ODOO_CONFIG.url
 
     for (const odooBrand of brands) {
       const name = (odooBrand.name || "").trim();

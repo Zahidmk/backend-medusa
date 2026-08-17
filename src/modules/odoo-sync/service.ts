@@ -18,6 +18,8 @@
  * @version 2.0 — March 2026
  */
 
+import { ODOO_CONFIG } from "../../config/odoo"
+
 import axios, { AxiosInstance } from "axios"
 import https from "https"
 
@@ -366,12 +368,11 @@ class OdooSyncService {
   private requestId = 0
 
   constructor() {
-    // Use hardcoded config since env vars aren't loading in MedusaJS exec context
     this.config = {
-      url: process.env.ODOO_URL?.replace(/\/$/, '') || "https://oskarllc-new-31031096.dev.odoo.com",
-      dbName: process.env.ODOO_DB_NAME || "oskarllc-new-31031096",
-      username: process.env.ODOO_USERNAME || "SYG",
-      password: process.env.ODOO_API_KEY || "2a420f7cb6d0c1c8f73368131f025f638c30704e",
+      url: ODOO_CONFIG.url,
+      dbName: ODOO_CONFIG.dbName,
+      username: ODOO_CONFIG.username,
+      password: ODOO_CONFIG.password,
     }
   }
 

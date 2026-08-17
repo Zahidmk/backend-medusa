@@ -24,10 +24,10 @@ interface OdooPartner {
 }
 
 // Odoo configuration
-const ODOO_URL = process.env.ODOO_URL || "https://oskarllc-new-31031096.dev.odoo.com"
-const ODOO_DB = process.env.ODOO_DB_NAME || "oskarllc-new-31031096"
-const ODOO_USERNAME = process.env.ODOO_USERNAME || "SYG"
-const ODOO_PASSWORD = process.env.ODOO_PASSWORD || "S123456"
+const ODOO_URL = (process.env.ODOO_URL || "").replace(/\/$/, "")
+const ODOO_DB = process.env.ODOO_DB_NAME || ""
+const ODOO_USERNAME = process.env.ODOO_USERNAME || ""
+const ODOO_PASSWORD = process.env.ODOO_PASSWORD || process.env.ODOO_API_KEY || ""
 
 export default async function syncOdooCustomers({ container }: ExecArgs) {
   console.log("\n👥 Syncing Customers from Odoo to MedusaJS...")

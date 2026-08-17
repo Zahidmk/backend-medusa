@@ -1,10 +1,12 @@
 import { ExecArgs } from "@medusajs/framework/types"
 import axios from "axios"
 
-const ODOO_URL = process.env.ODOO_URL || "https://oskarllc-new-31031096.dev.odoo.com"
-const ODOO_DB = process.env.ODOO_DB_NAME || "oskarllc-stage-27028831"
-const ODOO_USER = process.env.ODOO_USERNAME || "SYG"
-const ODOO_API_KEY = process.env.ODOO_API_KEY || ""
+import { ODOO_CONFIG } from "../config/odoo"
+
+const ODOO_URL = ODOO_CONFIG.url
+const ODOO_DB = ODOO_CONFIG.dbName
+const ODOO_USER = ODOO_CONFIG.username
+const ODOO_API_KEY = ODOO_CONFIG.apiKey
 
 export default async function testOdoo({ container }: ExecArgs) {
   try {

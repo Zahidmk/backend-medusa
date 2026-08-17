@@ -12,8 +12,10 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
  * Supports single + bulk operations.
  */
 
-const WEBHOOK_SECRET = process.env.ODOO_WEBHOOK_SECRET || "marqa-odoo-webhook-2026"
-const ODOO_BASE_URL = (process.env.ODOO_URL || "https://oskarllc-new-35045199.dev.odoo.com").replace(/\/$/, "")
+import { ODOO_CONFIG } from "../../../../config/odoo"
+
+const WEBHOOK_SECRET = ODOO_CONFIG.webhookSecret
+const ODOO_BASE_URL = ODOO_CONFIG.url
 
 function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").replace(/(^-|-$)/g, "").substring(0, 100)

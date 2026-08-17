@@ -9,6 +9,7 @@ import {
   MedusaContainer,
 } from "@medusajs/framework/types";
 import { Modules } from "@medusajs/framework/utils";
+import { ODOO_CONFIG } from "../config/odoo";
 
 export default async function odooSyncJob(containerOrObj: any) {
   const container: MedusaContainer = containerOrObj?.resolve ? containerOrObj : containerOrObj?.container;
@@ -115,7 +116,7 @@ export default async function odooSyncJob(containerOrObj: any) {
 
         if (existingProduct) {
           // Build images array: main thumbnail + gallery images from Odoo
-          const ODOO_URL = process.env.ODOO_URL?.replace(/\/$/, '') || "https://oskarllc-new-31031096.dev.odoo.com";
+          const ODOO_URL = ODOO_CONFIG.url;
           const imageUrls: Array<{ url: string }> = [];
           if (odooProduct.image_1920) {
             imageUrls.push({ url: `${ODOO_URL}/web/image/product.template/${odooProduct.id}/image_1920` });
@@ -156,7 +157,7 @@ export default async function odooSyncJob(containerOrObj: any) {
         const brandOdooId = odooProduct.custom_brand_id?.[0] || odooProduct.brand_id?.[0] || null;
         // Build brand image URL from Odoo custom.product.brand model
         const brandImageUrl = brandOdooId
-          ? `${process.env.ODOO_URL?.replace(/\/$/, '') || "https://oskarllc-new-31031096.dev.odoo.com"}/web/image/custom.product.brand/${brandOdooId}/image_1920`
+          ? `${ODOO_CONFIG.url}/web/image/custom.product.brand/${brandOdooId}/image_1920`
           : null;
 
         if (brandName && typeof brandName === "string") {

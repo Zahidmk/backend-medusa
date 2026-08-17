@@ -3,7 +3,9 @@ const knex = require('knex')({
   connection: 'postgres://marqa_user:marqa123@localhost:5432/marqa_souq_dev'
 });
 
-const ODOO_BASE = 'https://oskarllc-new-27289548.dev.odoo.com';
+require('dotenv').config();
+
+const ODOO_BASE = (process.env.ODOO_URL || '').replace(/\/$/, '');
 
 async function main() {
   // 1. Fix odoo images (pattern: odoo-XXXXX in filename)

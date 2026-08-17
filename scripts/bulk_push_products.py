@@ -27,10 +27,10 @@ except ImportError:
 import xmlrpc.client
 
 # Configuration
-ODOO_URL = os.environ.get("ODOO_URL", "https://oskarllc-new-27289548.dev.odoo.com")
-ODOO_DB = os.environ.get("ODOO_DB", "oskarllc-new-27289548")
-ODOO_USER = os.environ.get("ODOO_USER", "SYG")
-ODOO_PASSWORD = os.environ.get("ODOO_PASSWORD", "S123456")
+ODOO_URL = os.environ.get("ODOO_URL", "")
+ODOO_DB = os.environ.get("ODOO_DB_NAME") or os.environ.get("ODOO_DB", "")
+ODOO_USER = os.environ.get("ODOO_USERNAME") or os.environ.get("ODOO_USER", "")
+ODOO_PASSWORD = os.environ.get("ODOO_PASSWORD") or os.environ.get("ODOO_API_KEY", "")
 
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "http://72.61.240.40:9000/odoo/webhooks/products")
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "marqa-odoo-webhook-2026")

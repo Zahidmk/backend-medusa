@@ -29,10 +29,10 @@ if (fs.existsSync(dotenvPath)) {
   });
 }
 
-const rawOdooUrl = process.env.ODOO_URL || 'https://oskarllc-new-35045199.dev.odoo.com';
-const ODOO_DB   = process.env.ODOO_DB_NAME || 'oskarllc-new-35045199';
-const ODOO_USER = process.env.ODOO_USERNAME || 'SYG';
-const ODOO_KEY  = process.env.ODOO_API_KEY || '2a420f7cb6d0c1c8f73368131f025f638c30704e';
+const rawOdooUrl = (process.env.ODOO_URL || '').replace(/\/$/, '');
+const ODOO_DB   = process.env.ODOO_DB_NAME || '';
+const ODOO_USER = process.env.ODOO_USERNAME || '';
+const ODOO_KEY  = process.env.ODOO_API_KEY || process.env.ODOO_PASSWORD || '';
 
 const OUT_DIR = IS_PROD
   ? '/var/www/marqa-souq/frontend/markasouq-web/public/brands'

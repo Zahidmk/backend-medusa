@@ -10,11 +10,11 @@ import https from "https"
 // Disable SSL verification for dev Odoo instances
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
 
-// Odoo credentials from the user
-const ODOO_URL = "https://oskarllc-stage-27028831.dev.odoo.com"
-const ODOO_DB_NAME = "oskarllc-stage-27028831"
-const ODOO_USERNAME = "admin"
-const ODOO_API_KEY = "bcbf8f1f9949b7bb66203265b7b88ebfd84b248f"
+// Odoo credentials from environment
+const ODOO_URL = (process.env.ODOO_URL || "").replace(/\/$/, "")
+const ODOO_DB_NAME = process.env.ODOO_DB_NAME || ""
+const ODOO_USERNAME = process.env.ODOO_USERNAME || ""
+const ODOO_API_KEY = process.env.ODOO_API_KEY || process.env.ODOO_PASSWORD || ""
 
 interface OdooProduct {
   id: number
