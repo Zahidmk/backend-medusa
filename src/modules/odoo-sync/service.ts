@@ -869,9 +869,8 @@ class OdooSyncService {
           .replace(/^-|-$/g, "")         // trim leading/trailing dashes
           .substring(0, 100)
 
-    // Determine product status:
-    // Default set to "draft" as requested so it can be manually published on the Medusa dashboard later
-    const status = "draft"
+    // Determine product status dynamically based on Odoo is_published field
+    const status = product.is_published === false ? "draft" : "published"
 
     // Brand name: from resolved brand_id, or x_studio_brand_1, or options
     const brandName = options?.brandName

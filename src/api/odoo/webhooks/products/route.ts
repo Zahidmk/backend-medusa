@@ -308,8 +308,8 @@ async function upsertProduct(
   const price = Math.round(rawPrice * KWD_FILS_DIVISOR)
   const description = p.description_sale || p.description || ""
   const weight = p.weight ? String(p.weight) : null
-  // Default all newly synced products to "draft" so they can be reviewed before publishing
-  const status = "draft"
+  // Automatically set status based on Odoo is_published flag
+  const status = p.is_published === false ? "draft" : "published"
 
   // ── Barcode: strip "(EAN-13): " or "(EAN-8): " or any similar prefix ──────
   const rawBarcode = p.barcode || null
@@ -446,8 +446,8 @@ async function upsertProduct(
   if (existBySku.rows?.length > 0) {
     const prodId = existBySku.rows[0].id
     await pg.raw(
-      `UPDATE product SET title=?, description=?, weight=?, metadata=?, thumbnail=COALESCE(?, thumbnail), updated_at=NOW() WHERE id=?`,
-      [title, description, weight, JSON.stringify(metadata), p.image_url || null, prodId]
+      `UPDATE product SET title=?, description=?, weight=?, metadata=?, status=?, thumbnail=COALESCE(?, thumbnail), updated_at=NOW() WHERE id=?`,
+      [title, description, weight, JSON.stringify(metadata), status, p.image_url || null, prodId]
     )
     const varRes = await pg.raw(
       `SELECT pv.id as vid, pvps.price_set_id as psid FROM product_variant pv LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id WHERE pv.product_id = ? AND pv.deleted_at IS NULL LIMIT 1`,
