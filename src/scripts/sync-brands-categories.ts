@@ -323,6 +323,7 @@ async function createOrUpdateCategory(
         counters.catsNoImage()
         console.log(`   ⚠️  No image data for category: ${oCategory.name}`)
       }
+    }
     if (!imageUrl) {
       imageUrl = `${ODOO_BASE_URL}/web/image/product.public.category/${oCategory.id}/image_1920`
     }
