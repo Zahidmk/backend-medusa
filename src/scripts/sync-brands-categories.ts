@@ -323,9 +323,8 @@ async function createOrUpdateCategory(
         counters.catsNoImage()
         console.log(`   ⚠️  No image data for category: ${oCategory.name}`)
       }
-    } else {
-      counters.catsNoImage()
-      console.log(`   ⚠️  Category "${oCategory.name}" has no image in Odoo`)
+    if (!imageUrl) {
+      imageUrl = `${ODOO_BASE_URL}/web/image/product.public.category/${oCategory.id}/image_1920`
     }
 
     // Check if category already exists (even soft-deleted, we restore it)

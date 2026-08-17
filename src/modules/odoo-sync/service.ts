@@ -663,7 +663,7 @@ class OdooSyncService {
   async fetchPublicCategories(): Promise<OdooPublicCategory[]> {
     await this.ensureAuth()
     try {
-      const categories = await this.executeKw(
+      let categories = await this.executeKw(
         "product.public.category",
         "search_read",
         [[["medusa_sync", "=", true]]],
@@ -675,10 +675,40 @@ class OdooSyncService {
           context: { bin_size: false }
         }
       )
+      if (!categories || (categories as any[]).length === 0) {
+        categories = await this.executeKw(
+          "product.public.category",
+          "search_read",
+          [[]],
+          { 
+            fields: ["id", "name", "parent_id", "parent_path", "sequence", "website_id", "image_1920"], 
+            limit: 1000, 
+            offset: 0, 
+            order: "sequence asc",
+            context: { bin_size: false }
+          }
+        )
+      }
       return categories as OdooPublicCategory[]
     } catch (error: any) {
-      console.warn("⚠️  product.public.category not available:", error.message)
-      return []
+      try {
+        const categories = await this.executeKw(
+          "product.public.category",
+          "search_read",
+          [[]],
+          { 
+            fields: ["id", "name", "parent_id", "parent_path", "sequence", "website_id", "image_1920"], 
+            limit: 1000, 
+            offset: 0, 
+            order: "sequence asc",
+            context: { bin_size: false }
+          }
+        )
+        return categories as OdooPublicCategory[]
+      } catch (err: any) {
+        console.warn("⚠️  product.public.category not available:", err.message)
+        return []
+      }
     }
   }
 
