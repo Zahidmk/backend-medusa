@@ -134,7 +134,7 @@ export default async function odooCategorySyncJob(containerOrObj: any) {
       let parentMedusaId: string | null = null
       if (parentHandle) {
         const parentRow = await pgConnection.raw(
-          `SELECT id FROM product_category WHERE handle = ? AND deleted_at IS NULL LIMIT 1`,
+          `SELECT id FROM product_category WHERE handle = ? LIMIT 1`,
           [parentHandle]
         )
         parentMedusaId = parentRow.rows[0]?.id || null
@@ -143,7 +143,7 @@ export default async function odooCategorySyncJob(containerOrObj: any) {
       // Fallback: look up parent by odoo_id in metadata
       if (!parentMedusaId && parentOdooId) {
         const parentByOdooId = await pgConnection.raw(
-          `SELECT id FROM product_category WHERE metadata->>'odoo_id' = ? AND deleted_at IS NULL LIMIT 1`,
+          `SELECT id FROM product_category WHERE metadata->>'odoo_id' = ? LIMIT 1`,
           [String(parentOdooId)]
         )
         parentMedusaId = parentByOdooId.rows[0]?.id || null

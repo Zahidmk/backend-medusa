@@ -252,7 +252,7 @@ export default async function syncBrandsCategories({ container }: ExecArgs) {
     let parentMedusaId: string | null = null
     if (parentHandle) {
       const parentRows = await pgConnection.raw(
-        `SELECT id FROM product_category WHERE handle = ? AND deleted_at IS NULL LIMIT 1`,
+        `SELECT id FROM product_category WHERE handle = ? LIMIT 1`,
         [parentHandle]
       )
       parentMedusaId = parentRows.rows[0]?.id || null
@@ -261,7 +261,7 @@ export default async function syncBrandsCategories({ container }: ExecArgs) {
     // Fallback: look up parent by odoo_id in metadata
     if (!parentMedusaId && parentOdooId) {
       const parentByOdooId = await pgConnection.raw(
-        `SELECT id FROM product_category WHERE metadata->>'odoo_id' = ? AND deleted_at IS NULL LIMIT 1`,
+        `SELECT id FROM product_category WHERE metadata->>'odoo_id' = ? LIMIT 1`,
         [String(parentOdooId)]
       )
       parentMedusaId = parentByOdooId.rows[0]?.id || null
