@@ -89,13 +89,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     }
     const formattedAmount = rawAmt ? `${parseFloat(rawAmt).toFixed(3)} KWD` : "";
 
+    const isCaptured = (data.knet_result === "CAPTURED" || data.result === "CAPTURED" || data.status === "success" || data.status === "captured");
+
     const knetDetails = {
       payment_id: data.knet_payment_id || data.paymentid || "",
       tran_id: data.knet_tranid || data.tranid || "",
       track_id: data.knet_trackid || data.track_id || trackId || data.knet_ref || "",
       ref_id: data.knet_ref || data.ref || "",
-      result: data.knet_result || data.result || "PENDING",
-      status: data.knet_result || data.status || "PENDING",
+      result: isCaptured ? "SUCCESS" : "FAILED",
+      status: isCaptured ? "SUCCESS" : "FAILED",
       date: data.knet_date || data.knet_postdate || data.postdate || "",
       amount: formattedAmount,
     };

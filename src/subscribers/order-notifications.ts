@@ -93,7 +93,7 @@ export default async function orderPlacedHandler({
             refId: data.knet_ref || data.ref || "",
             date: data.knet_date || data.knet_postdate || data.postdate || "",
             amount: formattedAmount,
-            status: data.knet_result || "CAPTURED",
+            status: "SUCCESS",
           };
         }
       }

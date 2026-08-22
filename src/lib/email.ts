@@ -149,7 +149,7 @@ function orderConfirmedTemplate(data: OrderEmailData): { subject: string; html: 
       ${data.knetDetails.trackId ? `<div class="order-row"><span>Track ID / Reference ID</span><span><strong>${data.knetDetails.trackId}</strong></span></div>` : ""}
       ${data.knetDetails.date ? `<div class="order-row"><span>Transaction Date & Time</span><span>${data.knetDetails.date}</span></div>` : ""}
       ${data.knetDetails.amount ? `<div class="order-row"><span>Amount Paid</span><span><strong>${data.knetDetails.amount}</strong></span></div>` : ""}
-      <div class="order-row"><span>Transaction Status</span><span style="color:#16a34a;font-weight:700;">${data.knetDetails.status || "CAPTURED"}</span></div>
+      <div class="order-row"><span>Transaction Status</span><span style="color:#16a34a;font-weight:700;">${data.knetDetails.status || "SUCCESS"}</span></div>
     </div>
   ` : "";
 
