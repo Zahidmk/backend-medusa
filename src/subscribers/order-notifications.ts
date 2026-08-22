@@ -56,6 +56,51 @@ export default async function orderPlacedHandler({
           .join(", ")
       : undefined;
 
+    // Query KNET details if available
+    let knetDetails: any = undefined;
+    try {
+      const paymentResult = await pgConnection.raw(
+        `SELECT 
+          p.data as payment_data,
+          ps.data as session_data,
+          pc.amount as pc_amount,
+          pc.currency_code as pc_currency
+         FROM order_payment_collection opc
+         JOIN payment_collection pc ON pc.id = opc.payment_collection_id
+         LEFT JOIN payment p ON p.payment_collection_id = pc.id
+         LEFT JOIN payment_session ps ON ps.payment_collection_id = pc.id
+         WHERE opc.order_id = ?
+         LIMIT 1`,
+        [order.id]
+      );
+      if (paymentResult.rows?.length > 0) {
+        const row = paymentResult.rows[0];
+        const data = row.payment_data || row.session_data || {};
+        if (data.knet_payment_id || data.knet_tranid || data.knet_result) {
+          let rawAmt = data.knet_amt || data.amt || "";
+          if (!rawAmt && row.pc_amount) {
+            let numericAmt = Number(row.pc_amount);
+            if (row.pc_currency?.toLowerCase() === "kwd" && numericAmt > 500) {
+              numericAmt = numericAmt / 1000;
+            }
+            rawAmt = numericAmt.toFixed(3);
+          }
+          const formattedAmount = rawAmt ? `${parseFloat(rawAmt).toFixed(3)} KWD` : "";
+          knetDetails = {
+            paymentId: data.knet_payment_id || data.paymentid || "",
+            tranId: data.knet_tranid || data.tranid || "",
+            trackId: data.knet_trackid || data.track_id || data.knet_ref || "",
+            refId: data.knet_ref || data.ref || "",
+            date: data.knet_date || data.knet_postdate || data.postdate || "",
+            amount: formattedAmount,
+            status: data.knet_result || "CAPTURED",
+          };
+        }
+      }
+    } catch (knetErr: any) {
+      logger.warn(`[OrderEmail] Could not query KNET details for order ${order.id}: ${knetErr?.message || knetErr}`);
+    }
+
     // ── Send Email ──────────────────────────────────────────────────────────
     await sendOrderStatusEmail("order.confirmed", order.email, {
       customerName,
@@ -66,6 +111,7 @@ export default async function orderPlacedHandler({
       total: subtotal,
       currencyCode: order.currency_code || "kwd",
       shippingAddress,
+      knetDetails,
     });
 
     logger.info(

@@ -115,6 +115,15 @@ interface OrderEmailData {
   trackingUrl?: string;
   carrierName?: string;
   cancelledReason?: string;
+  knetDetails?: {
+    paymentId?: string;
+    tranId?: string;
+    trackId?: string;
+    refId?: string;
+    date?: string;
+    amount?: string;
+    status?: string;
+  };
 }
 
 // ── 1. Order Confirmed ────────────────────────────────────────────────────────
@@ -130,6 +139,20 @@ function orderConfirmedTemplate(data: OrderEmailData): { subject: string; html: 
     )
     .join("");
 
+  const knetReceiptBlock = data.knetDetails ? `
+    <div class="order-box" style="background:#f0f9ff;border:1px solid #bae6fd;padding:18px 22px;margin:20px 0;border-radius:12px;">
+      <div style="font-weight:700;color:#0369a1;margin-bottom:12px;font-size:15px;">
+        💳 KNET Payment Transaction Receipt
+      </div>
+      ${data.knetDetails.paymentId ? `<div class="order-row"><span>Payment ID (18 digits)</span><span><strong>${data.knetDetails.paymentId}</strong></span></div>` : ""}
+      ${data.knetDetails.tranId ? `<div class="order-row"><span>Transaction ID (15 digits)</span><span><strong>${data.knetDetails.tranId}</strong></span></div>` : ""}
+      ${data.knetDetails.trackId ? `<div class="order-row"><span>Track ID / Reference ID</span><span><strong>${data.knetDetails.trackId}</strong></span></div>` : ""}
+      ${data.knetDetails.date ? `<div class="order-row"><span>Transaction Date & Time</span><span>${data.knetDetails.date}</span></div>` : ""}
+      ${data.knetDetails.amount ? `<div class="order-row"><span>Amount Paid</span><span><strong>${data.knetDetails.amount}</strong></span></div>` : ""}
+      <div class="order-row"><span>Transaction Status</span><span style="color:#16a34a;font-weight:700;">${data.knetDetails.status || "CAPTURED"}</span></div>
+    </div>
+  ` : "";
+
   const content = `
     <div class="body">
       <span class="status-badge" style="background:#dcfce7;color:#16a34a;">✅ Order Confirmed</span>
@@ -139,8 +162,10 @@ function orderConfirmedTemplate(data: OrderEmailData): { subject: string; html: 
       <div class="order-box">
         <div class="order-row"><span>Order Number</span><span><strong>#${data.displayId}</strong></span></div>
         ${data.shippingAddress ? `<div class="order-row"><span>Delivery To</span><span>${data.shippingAddress}</span></div>` : ""}
-        <div class="order-row"><span>Payment</span><span>Cash on Delivery</span></div>
+        <div class="order-row"><span>Payment Method</span><span>${data.knetDetails ? "KNET Online Payment" : "Cash on Delivery"}</span></div>
       </div>
+
+      ${knetReceiptBlock}
 
       <table class="items-table">
         <thead><tr><th>Item</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th></tr></thead>

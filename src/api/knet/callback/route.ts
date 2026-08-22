@@ -173,14 +173,30 @@ async function handleKnetCallback(req: MedusaRequest, res: MedusaResponse) {
     }
 
     // 6. Update session data to store KNET transaction details
+    const nowIso = new Date().toISOString();
+    const dateFormatted = new Date().toLocaleString("en-US", {
+      timeZone: "Asia/Kuwait",
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }) + " AST (GMT+3)";
+
     const updatedData = {
       ...(session.data || {}),
-      knet_payment_id: paymentid,
-      knet_result: result,
-      knet_auth: auth,
-      knet_ref: ref,
-      knet_tranid: tranid,
-      knet_postdate: postdate,
+      knet_payment_id: paymentid || "",
+      knet_result: result || "",
+      knet_auth: auth || "",
+      knet_ref: ref || targetTrackId || "",
+      knet_tranid: tranid || "",
+      knet_postdate: postdate || "",
+      knet_trackid: targetTrackId || trackid || "",
+      knet_date: dateFormatted,
+      knet_iso_date: nowIso,
+      knet_amt: amt || sessionAmountStr || "",
       status: result === "CAPTURED" ? "success" : "failed"
     };
 
@@ -217,7 +233,7 @@ async function handleKnetCallback(req: MedusaRequest, res: MedusaResponse) {
         console.error(`[KNET Callback] Authorization succeeded: no`);
         console.error(`[KNET Callback] Authorization failed for session ${session.id}: ${e?.message || e}`);
         // Authorization failure: do NOT redirect to success
-        const errRedirect = `${frontendErrorUrl}?error=authorization_failed`;
+        const errRedirect = `${frontendErrorUrl}?error=authorization_failed&cart_id=${encodeURIComponent(cartId)}&track_id=${encodeURIComponent(targetTrackId)}`;
         console.log(`[KNET Callback] Returning success redirect: no`);
         console.log(`[KNET Callback] Returning redirect: ${errRedirect}`);
         return res.status(200).send(`REDIRECT=${errRedirect}`);
@@ -229,7 +245,7 @@ async function handleKnetCallback(req: MedusaRequest, res: MedusaResponse) {
     // 8. Return REDIRECT=<URL> as required by KNET
     const finalRedirectUrl = result === "CAPTURED" && authResultStatus === "authorized"
       ? `${frontendSuccessUrl}?cart_id=${cartId}&status=success`
-      : `${frontendErrorUrl}?error=${encodeURIComponent(result || "failed")}`;
+      : `${frontendErrorUrl}?error=${encodeURIComponent(result || "failed")}&cart_id=${encodeURIComponent(cartId)}&track_id=${encodeURIComponent(targetTrackId)}`;
 
     console.log(`[KNET Callback] Returning success redirect: ${result === "CAPTURED" && authResultStatus === "authorized" ? "yes" : "no"}`);
     console.log(`[KNET Callback] Returning redirect: ${finalRedirectUrl}`);
