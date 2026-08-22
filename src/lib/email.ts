@@ -332,11 +332,12 @@ export async function sendOrderStatusEmail(
   toEmail: string,
   data: OrderEmailData
 ): Promise<void> {
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
+  const smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER;
+  const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
 
   if (!smtpUser || !smtpPass) {
-    console.warn(`[Email] SMTP_USER or SMTP_PASS not set — skipping ${type} email for order #${data.displayId}`);
+    console.warn(`[Email] SMTP_USER or SMTP_PASS not set in environment — skipping ${type} email for order #${data.displayId} to ${toEmail}`);
+    console.warn(`[Email] Setup Tip: Add SMTP_USER and SMTP_PASS (or GMAIL App Password) to your backend .env file.`);
     return;
   }
 
@@ -363,14 +364,30 @@ export async function sendOrderStatusEmail(
       return;
   }
 
-  const transporter = createTransporter();
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || "smtp.gmail.com",
+    port: parseInt(process.env.SMTP_PORT || "587"),
+    secure: process.env.SMTP_SECURE === "true", // true for 465, false for 587
+    auth: {
+      user: smtpUser,
+      pass: smtpPass,
+    },
+  });
 
-  await transporter.sendMail({
-    from: `"${BRAND.fromName}" <${BRAND.fromEmail}>`,
+  const fromEmail = process.env.SMTP_FROM || smtpUser || "noreply@markasouqs.com";
+  const fromName = process.env.SMTP_FROM_NAME || BRAND.name;
+
+  console.log(`[Email] Attempting to send ${type} email to ${toEmail} for order #${data.displayId}...`);
+  if (data.knetDetails) {
+    console.log(`[Email] KNET Receipt Details attached: PaymentID=${data.knetDetails.paymentId}, TranID=${data.knetDetails.tranId}, Status=${data.knetDetails.status}`);
+  }
+
+  const info = await transporter.sendMail({
+    from: `"${fromName}" <${fromEmail}>`,
     to: toEmail,
     subject: template.subject,
     html: template.html,
   });
 
-  console.log(`[Email] ✅ Sent ${type} email to ${toEmail} for order #${data.displayId}`);
+  console.log(`[Email] ✅ Sent ${type} email to ${toEmail} for order #${data.displayId} (MessageID: ${info.messageId || "sent"})`);
 }

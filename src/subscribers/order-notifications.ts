@@ -25,8 +25,21 @@ export default async function orderPlacedHandler({
       relations: ["items", "shipping_address"],
     });
 
-    if (!order.email) {
-      logger.warn(`[OrderEmail] Order ${order.id} has no email address — skipping`);
+    let recipientEmail = order.email;
+    if (!recipientEmail && order.customer_id) {
+      try {
+        const custRes = await pgConnection.raw(`SELECT email FROM customer WHERE id = ?`, [order.customer_id]);
+        if (custRes.rows?.[0]?.email) {
+          recipientEmail = custRes.rows[0].email;
+          logger.info(`[OrderEmail] Resolved email ${recipientEmail} from customer ID ${order.customer_id}`);
+        }
+      } catch (custErr: any) {
+        logger.warn(`[OrderEmail] Could not lookup customer email for ID ${order.customer_id}: ${custErr?.message || custErr}`);
+      }
+    }
+
+    if (!recipientEmail) {
+      logger.warn(`[OrderEmail] Order ${order.id} has no recipient email address — skipping`);
       return;
     }
 
@@ -102,7 +115,7 @@ export default async function orderPlacedHandler({
     }
 
     // ── Send Email ──────────────────────────────────────────────────────────
-    await sendOrderStatusEmail("order.confirmed", order.email, {
+    await sendOrderStatusEmail("order.confirmed", recipientEmail, {
       customerName,
       orderId: order.id,
       displayId: order.display_id,
