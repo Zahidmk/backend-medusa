@@ -144,9 +144,9 @@ function orderConfirmedTemplate(data: OrderEmailData): { subject: string; html: 
       <div style="font-weight:700;color:#0369a1;margin-bottom:12px;font-size:15px;">
         💳 KNET Payment Transaction Receipt
       </div>
-      ${data.knetDetails.paymentId ? `<div class="order-row"><span>Payment ID (18 digits)</span><span><strong>${data.knetDetails.paymentId}</strong></span></div>` : ""}
-      ${data.knetDetails.tranId ? `<div class="order-row"><span>Transaction ID (15 digits)</span><span><strong>${data.knetDetails.tranId}</strong></span></div>` : ""}
-      ${data.knetDetails.trackId ? `<div class="order-row"><span>Track ID / Reference ID</span><span><strong>${data.knetDetails.trackId}</strong></span></div>` : ""}
+      ${data.knetDetails.paymentId ? `<div class="order-row"><span>Payment ID</span><span><strong>${data.knetDetails.paymentId}</strong></span></div>` : ""}
+      ${data.knetDetails.tranId ? `<div class="order-row"><span>Transaction ID</span><span><strong>${data.knetDetails.tranId}</strong></span></div>` : ""}
+      ${data.knetDetails.trackId ? `<div class="order-row"><span>Track ID</span><span><strong>${data.knetDetails.trackId}</strong></span></div>` : ""}
       ${data.knetDetails.date ? `<div class="order-row"><span>Transaction Date & Time</span><span>${data.knetDetails.date}</span></div>` : ""}
       ${data.knetDetails.amount ? `<div class="order-row"><span>Amount Paid</span><span><strong>${data.knetDetails.amount}</strong></span></div>` : ""}
       <div class="order-row"><span>Transaction Status</span><span style="color:#16a34a;font-weight:700;">${data.knetDetails.status || "SUCCESS"}</span></div>
