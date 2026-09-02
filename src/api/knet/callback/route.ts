@@ -54,11 +54,11 @@ async function handleKnetCallback(req: MedusaRequest, res: MedusaResponse) {
 
     const frontendSuccessUrl = process.env.MARKASOUQ_FRONTEND_URL
       ? `${process.env.MARKASOUQ_FRONTEND_URL}/payment/knet/callback`
-      : "https://website.markasouqs.com/payment/knet/callback";
+      : "https://markasouq.com/payment/knet/callback";
 
     const frontendErrorUrl = process.env.MARKASOUQ_FRONTEND_URL
       ? `${process.env.MARKASOUQ_FRONTEND_URL}/payment/knet/callback`
-      : "https://website.markasouqs.com/payment/knet/callback";
+      : "https://markasouq.com/payment/knet/callback";
 
     // 1. Handle KNET error fields (if present without trandata)
     if (errorText || errorNo) {

@@ -26,10 +26,10 @@ const BRAND = {
   name: "MarkaSouq",
   color: "#1D4ED8",        // Blue
   accentColor: "#2563EB",
-  logo: "https://website.markasouqs.com/logo.png",
-  storeUrl: process.env.STORE_URL || "https://website.markasouqs.com",
-  supportEmail: process.env.SUPPORT_EMAIL || "support@markasouqs.com",
-  fromEmail: process.env.SMTP_FROM || "noreply@markasouqs.com",
+  logo: "https://markasouq.com/logo.png",
+  storeUrl: process.env.STORE_URL || "https://markasouq.com",
+  supportEmail: process.env.SUPPORT_EMAIL || "support@markasouq.com",
+  fromEmail: process.env.SMTP_FROM || "noreply@markasouq.com",
   fromName: process.env.SMTP_FROM_NAME || "MarkaSouq",
 };
 
@@ -374,7 +374,7 @@ export async function sendOrderStatusEmail(
     },
   });
 
-  const fromEmail = process.env.SMTP_FROM || smtpUser || "noreply@markasouqs.com";
+  const fromEmail = process.env.SMTP_FROM || smtpUser || "noreply@markasouq.com";
   const fromName = process.env.SMTP_FROM_NAME || BRAND.name;
 
   console.log(`[Email] Attempting to send ${type} email to ${toEmail} for order #${data.displayId}...`);

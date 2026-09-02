@@ -176,9 +176,27 @@ function getOdooImageUrl(odooId: number): string {
   return `${ODOO_BASE_URL}/web/image/product.product/${odooId}/image_1920`
 }
 
+interface OdooProductVariantPayload {
+  variant_id: number
+  sku?: string
+  default_code?: string
+  price?: number
+  lst_price?: number
+  marka_price?: number
+  retail_price?: number
+  barcode?: string
+  free_qty?: number
+  oskar_expo_template_id?: number | false
+  attributes?: Record<string, string>
+  name?: string
+  [key: string]: any
+}
+
 interface OdooProductPayload {
   odoo_id: number
   name: string
+  variants?: OdooProductVariantPayload[]
+  oskar_expo_template_id?: number | false
   // ── Arabic translations (real Odoo fields: arabic_name, arabic_description) ─
   arabic_name?: string               // Arabic product name → saved as title_ar
   arabic_description?: string        // Arabic description  → saved as description_ar
@@ -292,6 +310,308 @@ async function ensureCategory(
   return ""
 }
 
+/**
+ * Sync variants, prices, inventory items, options, and option values for a product.
+ * Supports both multi-variant payloads (p.variants array) and single-variant fallback.
+ */
+async function syncProductVariantsAndOptions(
+  pg: any,
+  prodId: string,
+  p: OdooProductPayload,
+  templateSku: string,
+  templateAttributes: Record<string, string>
+) {
+  const KWD_FILS_DIVISOR = 1000
+
+  // 1. Prepare raw variant array
+  let rawVariants: OdooProductVariantPayload[] = []
+  if (p.variants && Array.isArray(p.variants) && p.variants.length > 0) {
+    rawVariants = p.variants
+  } else {
+    rawVariants = [
+      {
+        variant_id: p.odoo_id,
+        sku: p.default_code || templateSku,
+        price: p.marka_price || p.list_price || 0,
+        barcode: p.barcode || "",
+        free_qty: p.free_qty || 0,
+        oskar_expo_template_id: p.oskar_expo_template_id || false,
+        attributes: templateAttributes,
+      },
+    ]
+  }
+
+  // 2. Extract options and option values across all variants
+  const optionValuesMap: Record<string, Set<string>> = {}
+  for (const v of rawVariants) {
+    const vAttrs = (v.attributes && typeof v.attributes === "object" && !Array.isArray(v.attributes))
+      ? v.attributes
+      : templateAttributes
+
+    for (const [key, val] of Object.entries(vAttrs)) {
+      if (!key || val === undefined || val === null) continue
+      const valStr = String(val).trim()
+      if (!valStr) continue
+      if (!optionValuesMap[key]) {
+        optionValuesMap[key] = new Set<string>()
+      }
+      for (const singleVal of valStr.split(",").map(s => s.trim()).filter(Boolean)) {
+        optionValuesMap[key].add(singleVal)
+      }
+    }
+  }
+
+  // Ensure product_option and product_option_value records exist
+  const optionValueIdMap: Map<string, string> = new Map()
+
+  for (const [optTitle, valSet] of Object.entries(optionValuesMap)) {
+    let optId = genId("opt")
+    await pg.raw(
+      `INSERT INTO product_option (id, product_id, title, created_at, updated_at)
+       VALUES (?, ?, ?, NOW(), NOW())
+       ON CONFLICT DO NOTHING`,
+      [optId, prodId, optTitle]
+    )
+    const optRes = await pg.raw(
+      `SELECT id FROM product_option WHERE product_id = ? AND title = ? AND deleted_at IS NULL LIMIT 1`,
+      [prodId, optTitle]
+    )
+    if (optRes.rows?.length > 0) {
+      optId = optRes.rows[0].id
+    }
+
+    for (const optVal of Array.from(valSet)) {
+      let optValId = genId("optval")
+      await pg.raw(
+        `INSERT INTO product_option_value (id, option_id, value, created_at, updated_at)
+         VALUES (?, ?, ?, NOW(), NOW())
+         ON CONFLICT DO NOTHING`,
+        [optValId, optId, optVal]
+      )
+      const valRes = await pg.raw(
+        `SELECT id FROM product_option_value WHERE option_id = ? AND value = ? AND deleted_at IS NULL LIMIT 1`,
+        [optId, optVal]
+      )
+      if (valRes.rows?.length > 0) {
+        optValId = valRes.rows[0].id
+      }
+      optionValueIdMap.set(`${optTitle}:::${optVal}`, optValId)
+    }
+  }
+
+  // 3. Process variants
+  const activeVariantIds: string[] = []
+
+  for (let idx = 0; idx < rawVariants.length; idx++) {
+    const v = rawVariants[idx]
+    const varOdooId = v.variant_id || p.odoo_id
+    const varSku = (v.sku || v.default_code || (rawVariants.length === 1 ? templateSku : `${templateSku}-v${varOdooId}`)).trim()
+
+    const rawBarcode = v.barcode || p.barcode || null
+    const varBarcode = rawBarcode
+      ? rawBarcode.replace(/^\(.*?\):\s*/i, "").trim() || rawBarcode
+      : null
+
+    const varPriceRaw = v.price ?? v.marka_price ?? v.lst_price ?? p.marka_price ?? p.list_price ?? 0
+    const varPrice = Math.round(varPriceRaw * KWD_FILS_DIVISOR)
+    const varQty = v.free_qty ?? 0
+    const varExpoTemplateId = v.oskar_expo_template_id || false
+    const vAttrs = (v.attributes && typeof v.attributes === "object" && !Array.isArray(v.attributes))
+      ? v.attributes
+      : templateAttributes
+
+    let varTitle = "Default"
+    const attrValues = Object.values(vAttrs).filter(Boolean)
+    if (attrValues.length > 0) {
+      varTitle = attrValues.join(" / ")
+    } else if (v.name) {
+      varTitle = v.name
+    } else if (rawVariants.length > 1) {
+      varTitle = `Variant ${varOdooId}`
+    }
+
+    const varMetadata: Record<string, any> = {
+      odoo_variant_id: varOdooId,
+      odoo_template_id: p.odoo_id,
+      oskar_expo_template_id: varExpoTemplateId,
+      attributes: vAttrs,
+      free_qty: varQty,
+      synced_at: new Date().toISOString(),
+    }
+
+    let varRes = await pg.raw(
+      `SELECT id FROM product_variant WHERE product_id = ? AND metadata->>'odoo_variant_id' = ? AND deleted_at IS NULL LIMIT 1`,
+      [prodId, String(varOdooId)]
+    )
+
+    if (!varRes.rows?.length && varSku) {
+      varRes = await pg.raw(
+        `SELECT id FROM product_variant WHERE sku = ? AND deleted_at IS NULL LIMIT 1`,
+        [varSku]
+      )
+    }
+
+    if (!varRes.rows?.length && rawVariants.length === 1) {
+      varRes = await pg.raw(
+        `SELECT id FROM product_variant WHERE product_id = ? AND deleted_at IS NULL LIMIT 1`,
+        [prodId]
+      )
+    }
+
+    let vid: string
+    if (varRes.rows?.length > 0) {
+      vid = varRes.rows[0].id
+      await pg.raw(
+        `UPDATE product_variant 
+         SET product_id = ?, title = ?, sku = ?, barcode = COALESCE(?, barcode), metadata = ?, allow_backorder = true, variant_rank = ?, updated_at = NOW() 
+         WHERE id = ?`,
+        [prodId, varTitle, varSku, varBarcode, JSON.stringify(varMetadata), idx, vid]
+      )
+    } else {
+      vid = genId("variant")
+      await pg.raw(
+        `INSERT INTO product_variant (id, product_id, title, sku, barcode, manage_inventory, allow_backorder, variant_rank, metadata, created_at, updated_at) 
+         VALUES (?, ?, ?, ?, ?, true, true, ?, ?, NOW(), NOW())`,
+        [vid, prodId, varTitle, varSku, varBarcode, idx, JSON.stringify(varMetadata)]
+      )
+    }
+
+    activeVariantIds.push(vid)
+
+    // Price Sync
+    let psId: string | null = null
+    const psRes = await pg.raw(
+      `SELECT price_set_id FROM product_variant_price_set WHERE variant_id = ? LIMIT 1`,
+      [vid]
+    )
+    if (psRes.rows?.length > 0) {
+      psId = psRes.rows[0].price_set_id
+    } else {
+      psId = genId("pset")
+      await pg.raw(`INSERT INTO price_set (id, created_at, updated_at) VALUES (?, NOW(), NOW())`, [psId])
+      await pg.raw(
+        `INSERT INTO product_variant_price_set (id, variant_id, price_set_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())`,
+        [genId("pvps"), vid, psId]
+      )
+    }
+
+    if (psId && varPrice >= 0) {
+      const rawAmount = JSON.stringify({ value: String(varPrice), precision: 20 })
+      const existsKwd = await pg.raw(
+        `SELECT id FROM price WHERE price_set_id = ? AND currency_code = 'kwd' AND deleted_at IS NULL LIMIT 1`,
+        [psId]
+      )
+      if (existsKwd.rows?.length === 0) {
+        await pg.raw(
+          `INSERT INTO price (id, price_set_id, currency_code, amount, raw_amount, rules_count, created_at, updated_at) 
+           VALUES (?, ?, 'kwd', ?, ?, 0, NOW(), NOW())`,
+          [genId("price"), psId, varPrice, rawAmount]
+        )
+      } else {
+        await pg.raw(
+          `UPDATE price SET amount = ?, raw_amount = ?, updated_at = NOW() WHERE price_set_id = ? AND currency_code = 'kwd' AND deleted_at IS NULL`,
+          [varPrice, rawAmount, psId]
+        )
+      }
+    }
+
+    // Inventory Sync
+    try {
+      let invItemId: string | null = null
+      const invItemRes = await pg.raw(`SELECT id FROM inventory_item WHERE sku = ? LIMIT 1`, [varSku])
+
+      if (invItemRes.rows?.length > 0) {
+        invItemId = invItemRes.rows[0].id
+        const invLvlRes = await pg.raw(`SELECT id FROM inventory_level WHERE inventory_item_id = ? LIMIT 1`, [invItemId])
+        if (invLvlRes.rows?.length > 0) {
+          await pg.raw(
+            `UPDATE inventory_level SET stocked_quantity = ?, updated_at = NOW() WHERE id = ?`,
+            [varQty, invLvlRes.rows[0].id]
+          )
+        } else {
+          const locRes = await pg.raw(`SELECT id FROM stock_location LIMIT 1`)
+          if (locRes.rows?.length > 0) {
+            await pg.raw(
+              `INSERT INTO inventory_level (id, inventory_item_id, location_id, stocked_quantity, reserved_quantity, incoming_quantity, created_at, updated_at) 
+               VALUES (?, ?, ?, ?, 0, 0, NOW(), NOW())`,
+              [genId("iloc"), invItemId, locRes.rows[0].id, varQty]
+            )
+          }
+        }
+      } else {
+        invItemId = genId("iitem")
+        await pg.raw(
+          `INSERT INTO inventory_item (id, sku, title, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())`,
+          [invItemId, varSku, `${p.name} - ${varTitle}`]
+        )
+        const locRes = await pg.raw(`SELECT id FROM stock_location LIMIT 1`)
+        if (locRes.rows?.length > 0) {
+          await pg.raw(
+            `INSERT INTO inventory_level (id, inventory_item_id, location_id, stocked_quantity, reserved_quantity, incoming_quantity, created_at, updated_at) 
+             VALUES (?, ?, ?, ?, 0, 0, NOW(), NOW())`,
+            [genId("iloc"), invItemId, locRes.rows[0].id, varQty]
+          )
+        }
+      }
+
+      if (invItemId) {
+        const linkRes = await pg.raw(
+          `SELECT id FROM product_variant_inventory_item WHERE variant_id = ? AND inventory_item_id = ? LIMIT 1`,
+          [vid, invItemId]
+        )
+        if (linkRes.rows?.length === 0) {
+          await pg.raw(`DELETE FROM product_variant_inventory_item WHERE variant_id = ?`, [vid])
+          await pg.raw(
+            `INSERT INTO product_variant_inventory_item (id, variant_id, inventory_item_id, required_quantity, created_at, updated_at) 
+             VALUES (?, ?, ?, 1, NOW(), NOW())`,
+            [genId("pvitem"), vid, invItemId]
+          )
+        }
+      }
+    } catch (err) {
+      console.warn(`[Odoo Webhook] Inventory sync failed for variant ${varSku}: ${err}`)
+    }
+
+    // Option Values Link
+    try {
+      await pg.raw(`DELETE FROM product_variant_option WHERE variant_id = ?`, [vid])
+
+      for (const [optKey, optVal] of Object.entries(vAttrs)) {
+        if (!optKey || !optVal) continue
+        const vals = String(optVal).split(",").map(s => s.trim()).filter(Boolean)
+        for (const singleVal of vals) {
+          const optValId = optionValueIdMap.get(`${optKey}:::${singleVal}`)
+          if (optValId) {
+            await pg.raw(
+              `INSERT INTO product_variant_option (variant_id, option_value_id) 
+               VALUES (?, ?) 
+               ON CONFLICT DO NOTHING`,
+              [vid, optValId]
+            )
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[Odoo Webhook] Variant option value link failed for variant ${vid}: ${err}`)
+    }
+  }
+
+  // 4. Soft delete old variants of this product that are no longer present in Odoo
+  if (activeVariantIds.length > 0) {
+    try {
+      const placeholders = activeVariantIds.map(() => "?").join(",")
+      await pg.raw(
+        `UPDATE product_variant SET deleted_at = NOW() WHERE product_id = ? AND id NOT IN (${placeholders}) AND deleted_at IS NULL`,
+        [prodId, ...activeVariantIds]
+      )
+    } catch (err) {
+      console.warn(`[Odoo Webhook] Stale variant cleanup failed for product ${prodId}: ${err}`)
+    }
+  }
+
+  console.log(`[Odoo Webhook] Synced ${activeVariantIds.length} variant(s) and ${Object.keys(optionValuesMap).length} option(s) for product ${prodId}`)
+}
+
 async function upsertProduct(
   pg: any,
   p: OdooProductPayload,
@@ -303,36 +623,27 @@ async function upsertProduct(
   const sku = p.default_code || `ODOO-${odooId}`
   const title = p.name || `Odoo Product ${odooId}`
   const KWD_FILS_DIVISOR = 1000
-  // Only use marka_price as requested
   const rawPrice = p.marka_price || 0
   const price = Math.round(rawPrice * KWD_FILS_DIVISOR)
   const description = p.description_sale || p.description || ""
   const weight = p.weight ? String(p.weight) : null
-  // Automatically set status based on Odoo is_published flag
   const status = p.is_published === false ? "draft" : "published"
 
-  // ── Barcode: strip "(EAN-13): " or "(EAN-8): " or any similar prefix ──────
   const rawBarcode = p.barcode || null
   const barcode = rawBarcode
     ? rawBarcode.replace(/^\(.*?\):\s*/i, "").trim() || rawBarcode
     : null
 
-  // ── Brand: prefer custom_brand_id[1], fallback to brand string ───────────
   const brand = (p.custom_brand_id && Array.isArray(p.custom_brand_id) ? p.custom_brand_id[1] : null)
     || p.brand
     || null
 
-  // ── Brand logo: accept brand_image_url (Odoo dev field) OR brand_logo_url,
-  //    OR auto-build from custom_brand_id ────────────────────────────────────
   const brandLogoUrl = p.brand_image_url
     || p.brand_logo_url
     || (p.custom_brand_id && Array.isArray(p.custom_brand_id)
       ? `${ODOO_BASE_URL}/api/brand/image/${p.custom_brand_id[0]}`
       : null)
 
-  // ── Category: prefer public_categ_ids (eCommerce path) over categ_id ─────
-  // public_categ_ids is the STOREFRONT category ("Electronics / Earphones & Headphones/Kids Headphone")
-  // categ_id is the internal accounting category ("Kids Headphones") — less accurate for website
   let categoryForMapping: string | null = null
   if (p.public_categ_ids) {
     if (typeof p.public_categ_ids === 'string') {
@@ -346,30 +657,24 @@ async function upsertProduct(
       }
     }
   }
-  // Fallback to categ_id if public_categ_ids not provided
   const category = categoryForMapping
     || (p.categ_id && Array.isArray(p.categ_id) ? p.categ_id[1] : null)
 
-  // ── Attributes: accept both pre-computed { Color: "Yellow" } dict
-  //    AND raw attribute_line_ids array from Odoo ────────────────────────────
   let attributes: Record<string, string> = {}
   if (p.attributes && typeof p.attributes === 'object' && !Array.isArray(p.attributes)) {
     attributes = p.attributes
   } else if (p.attribute_line_ids) {
     if (Array.isArray(p.attribute_line_ids)) {
-      // Array format: [{name: "Colour", values: ["Yellow"]}, ...]
       for (const line of p.attribute_line_ids as Array<{name: string; values: string[]}>) {
         if (line.name && Array.isArray(line.values) && line.values.length > 0) {
           attributes[line.name] = line.values.join(", ")
         }
       }
     } else if (typeof p.attribute_line_ids === 'object') {
-      // Dict format: { "colour": "yellow" }
       attributes = p.attribute_line_ids as Record<string, string>
     }
   }
 
-  // ── Alternative/accessory/upsell: accept both Odoo native names + our aliases ─
   const alternativeIds = Array.isArray(p.alternative_odoo_ids) ? p.alternative_odoo_ids
     : Array.isArray(p.alternative_product_ids) ? p.alternative_product_ids : []
   const accessoryIds = Array.isArray(p.accessory_odoo_ids) ? p.accessory_odoo_ids
@@ -377,8 +682,14 @@ async function upsertProduct(
   const upsellIds = Array.isArray(p.upsell_odoo_ids) ? p.upsell_odoo_ids
     : Array.isArray(p.optional_product_ids) ? p.optional_product_ids : []
 
-  // ── eCommerce description: accept both field names ────────────────────────
   const ecommerceDesc = p.description_ecommerce || p.ecommerce_description || ''
+
+  // Total stock calculation across variants if variants array provided
+  const rawVarList = (p.variants && Array.isArray(p.variants) && p.variants.length > 0) ? p.variants : []
+  const totalVariantsQty = rawVarList.reduce((sum, v) => sum + (v.free_qty || 0), 0)
+  const totalQty = (p.free_qty !== undefined && p.free_qty !== null && p.free_qty !== 0)
+    ? p.free_qty
+    : (rawVarList.length > 0 ? totalVariantsQty : (p.free_qty || 0))
 
   const metadata: Record<string, any> = {
     odoo_id: odooId,
@@ -386,49 +697,40 @@ async function upsertProduct(
     odoo_barcode: barcode,
     odoo_category: category,
     odoo_brand: brand,
-    odoo_qty: p.free_qty || 0,
-    odoo_stock: p.free_qty || 0,
+    odoo_qty: totalQty,
+    odoo_stock: totalQty,
+    oskar_expo_template_id: p.oskar_expo_template_id || false,
+    variants_count: rawVarList.length || 1,
     synced_at: new Date().toISOString(),
-    // ── Pricing ──────────────────────────────────────────────────────────
+    list_price: p.list_price || 0,
+    retail_price: p.retail_price || 0,
     compare_price: p.compare_list_price || 0,
     marka_price: p.marka_price || 0,
-    // ── Brand ────────────────────────────────────────────────────────────
     brand: brand,
     brand_logo_url: brandLogoUrl,
-    // ── Arabic translations ───────────────────────────────────────────────
     title_ar: p.arabic_name || null,
     description_ar: p.arabic_description || null,
-    // ── Descriptions ─────────────────────────────────────────────────────
     ecommerce_description: ecommerceDesc,
     medusa_description: p.medusa_description || null,
     medusa_overview: p.medusa_overview || null,
-    // ── Category / Sub-category ───────────────────────────────────────────
     sub_category: p.x_studio_sub_category || null,
-    public_categ_ids: p.public_categ_ids || null,    // full eCommerce path from Odoo
-    // ── Stock / Inventory ─────────────────────────────────────────────────
+    public_categ_ids: p.public_categ_ids || null,
     forecasted_qty: p.virtual_available || 0,
-    // ── Physical ─────────────────────────────────────────────────────────
     volume: p.volume || null,
     hs_code: p.hs_code || null,
     country_of_origin: p.country_of_origin || null,
-    // ── Badges / Flags ────────────────────────────────────────────────────
     is_new: p.is_new === true,
     warranty: p.warranty || '1 Year Warranty',
-    // ── SEO ──────────────────────────────────────────────────────────────
     seo_title: p.website_meta_title || p.seo_title || null,
     seo_description: p.website_meta_description || p.seo_description || null,
-    // ── Delivery eligibility ──────────────────────────────────────────────
     night_delivery: p.night_delivery === true,
     fast_delivery_areas: Array.isArray(p.fast_delivery_areas) ? p.fast_delivery_areas : [],
-    // ── Cross-sell / Comparison ───────────────────────────────────────────
     alternative_odoo_ids: alternativeIds,
     upsell_odoo_ids: upsellIds,
     accessory_odoo_ids: accessoryIds,
-    // ── Specifications / Attributes ───────────────────────────────────────
     attributes: attributes,
     features: Array.isArray(p.features) ? p.features : [],
     specifications: Array.isArray(p.specifications) ? p.specifications : [],
-    // ─────────────────────────────────────────────────────────────────────
   }
 
   // Check if product exists by odoo_id or SKU
@@ -443,464 +745,123 @@ async function upsertProduct(
         [sku]
       )
 
+  let prodId: string
+  let action: string
+
   if (existBySku.rows?.length > 0) {
-    const prodId = existBySku.rows[0].id
+    prodId = existBySku.rows[0].id
+    action = "updated"
     await pg.raw(
       `UPDATE product SET title=?, description=?, weight=?, metadata=?, status=?, thumbnail=COALESCE(?, thumbnail), updated_at=NOW() WHERE id=?`,
       [title, description, weight, JSON.stringify(metadata), status, p.image_url || null, prodId]
     )
-    const varRes = await pg.raw(
-      `SELECT pv.id as vid, pvps.price_set_id as psid FROM product_variant pv LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id WHERE pv.product_id = ? AND pv.deleted_at IS NULL LIMIT 1`,
-      [prodId]
-    )
-    // Ensure allow_backorder=true so frontend acts as the sole gatekeeper
-    if (varRes.rows?.length > 0) {
-      await pg.raw(
-        `UPDATE product_variant SET allow_backorder = true, updated_at = NOW() WHERE id = ?`,
-        [varRes.rows[0].vid]
-      )
-    }
-    // Always update barcode with cleaned value on update
-    if (varRes.rows?.length > 0 && barcode) {
-      await pg.raw(
-        `UPDATE product_variant SET barcode=?, updated_at=NOW() WHERE id=?`,
-        [barcode, varRes.rows[0].vid]
-      )
-    }
-    if (varRes.rows?.length > 0 && varRes.rows[0].psid && price > 0) {
-      const rawAmount = JSON.stringify({ value: String(price), precision: 20 })
-      const existsKwd = await pg.raw(
-        `SELECT id FROM price WHERE price_set_id=? AND currency_code='kwd' AND deleted_at IS NULL LIMIT 1`,
-        [varRes.rows[0].psid]
-      )
-      if (existsKwd.rows?.length === 0) {
-        await pg.raw(
-          `INSERT INTO price (id, price_set_id, currency_code, amount, raw_amount, rules_count, created_at, updated_at) VALUES (?, ?, 'kwd', ?, ?, 0, NOW(), NOW())`,
-          [genId("price"), varRes.rows[0].psid, price, rawAmount]
-        )
-      } else {
-        await pg.raw(
-          `UPDATE price SET amount=?, raw_amount=?, updated_at=NOW() WHERE price_set_id=? AND currency_code='kwd' AND deleted_at IS NULL`,
-          [price, rawAmount, varRes.rows[0].psid]
-        )
-      }
-    }
-
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // IMAGE SYNC (update path)
-    // Replace all images whenever Odoo sends an `images` array
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (p.images && Array.isArray(p.images) && p.images.length > 0) {
-      try {
-        // Delete all existing images for this product
-        await pg.raw(`DELETE FROM image WHERE product_id = ?`, [prodId])
-        // Re-insert the full gallery in order
-        for (let idx = 0; idx < p.images.length; idx++) {
-          const imgUrl = p.images[idx]
-          if (!imgUrl) continue
-          await pg.raw(
-            `INSERT INTO image (id, url, rank, product_id, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())`,
-            [genId("img"), imgUrl, idx, prodId]
-          )
-        }
-        // Also update thumbnail to be the first image
-        await pg.raw(
-          `UPDATE product SET thumbnail = ?, updated_at = NOW() WHERE id = ?`,
-          [p.images[0], prodId]
-        )
-        console.log(`[Odoo Webhook] Updated ${p.images.length} image(s) for product ${prodId}`)
-      } catch (imgErr) {
-        console.warn(`[Odoo Webhook] Image sync failed for ${prodId}: ${imgErr}`)
-      }
-    } else if (p.image_url) {
-      // If only a single image_url is provided, ensure it exists in the image table
-      try {
-        const existImgRes = await pg.raw(`SELECT id FROM image WHERE product_id = ? LIMIT 1`, [prodId])
-        if (existImgRes.rows?.length === 0) {
-          await pg.raw(
-            `INSERT INTO image (id, url, rank, product_id, created_at, updated_at) VALUES (?, ?, 0, ?, NOW(), NOW())`,
-            [genId("img"), p.image_url, prodId]
-          )
-        }
-      } catch (imgErr) {
-        console.warn(`[Odoo Webhook] Single image sync failed: ${imgErr}`)
-      }
-    }
-
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // CATEGORY SYNC
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const catHandle = odooCategoryToHandle(category)
-    if (catHandle) {
-      // Use ensureCategory to automatically create if missing
-      const catId = await ensureCategory(pg, catHandle, category || catHandle, categoryByHandle)
-      if (catId) {
-        try {
-          await pg.raw(
-            `INSERT INTO product_category_product (product_id, product_category_id)
-             VALUES (?, ?)
-             ON CONFLICT (product_id, product_category_id) DO NOTHING`,
-            [prodId, catId]
-          )
-        } catch (err) {
-          console.warn(`[Odoo Webhook] Category link failed for ${prodId}: ${err}`)
-        }
-      }
-    }
-
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // INVENTORY SYNC
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const qty = p.free_qty || 0
-    if (varRes.rows?.length > 0) {
-      const vid = varRes.rows[0].vid
-      try {
-        let invItemId: string | null = null
-
-        // Check if inventory_item exists
-        const invItemRes = await pg.raw(
-          `SELECT id FROM inventory_item WHERE sku = ? LIMIT 1`,
-          [sku]
-        )
-
-        if (invItemRes.rows?.length > 0) {
-          invItemId = invItemRes.rows[0].id
-          const invLvlRes = await pg.raw(
-            `SELECT id FROM inventory_level WHERE inventory_item_id = ? LIMIT 1`,
-            [invItemId]
-          )
-          if (invLvlRes.rows?.length > 0) {
-            await pg.raw(
-              `UPDATE inventory_level SET stocked_quantity = ?, updated_at = NOW() WHERE id = ?`,
-              [qty, invLvlRes.rows[0].id]
-            )
-          } else {
-            const locRes = await pg.raw(`SELECT id FROM stock_location LIMIT 1`)
-            if (locRes.rows?.length > 0) {
-              await pg.raw(
-                `INSERT INTO inventory_level (id, inventory_item_id, location_id, stocked_quantity, reserved_quantity, incoming_quantity, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, 0, 0, NOW(), NOW())`,
-                [genId("iloc"), invItemId, locRes.rows[0].id, qty]
-              )
-            }
-          }
-        } else {
-          invItemId = genId("iitem")
-          await pg.raw(
-            `INSERT INTO inventory_item (id, sku, title, created_at, updated_at)
-             VALUES (?, ?, ?, NOW(), NOW())`,
-            [invItemId, sku, title]
-          )
-          const locRes = await pg.raw(`SELECT id FROM stock_location LIMIT 1`)
-          if (locRes.rows?.length > 0) {
-            await pg.raw(
-              `INSERT INTO inventory_level (id, inventory_item_id, location_id, stocked_quantity, reserved_quantity, incoming_quantity, created_at, updated_at)
-               VALUES (?, ?, ?, ?, 0, 0, NOW(), NOW())`,
-              [genId("iloc"), invItemId, locRes.rows[0].id, qty]
-            )
-          }
-        }
-
-        // CRITICAL FIX: Link the variant to the inventory item so Medusa knows about it
-        if (invItemId) {
-          const linkRes = await pg.raw(
-            `SELECT id FROM product_variant_inventory_item WHERE variant_id = ? AND inventory_item_id = ? LIMIT 1`,
-            [vid, invItemId]
-          )
-          if (linkRes.rows?.length === 0) {
-            // Check if it's linked to a wrong item, if so, delete the wrong link
-            await pg.raw(`DELETE FROM product_variant_inventory_item WHERE variant_id = ?`, [vid])
-            await pg.raw(
-              `INSERT INTO product_variant_inventory_item (id, variant_id, inventory_item_id, required_quantity, created_at, updated_at)
-               VALUES (?, ?, ?, 1, NOW(), NOW())`,
-              [genId("pvitem"), vid, invItemId]
-            )
-          }
-        }
-      } catch (err) {
-        console.warn(`[Odoo Webhook] Inventory sync failed for ${sku}: ${err}`)
-      }
-    }
-
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // BRAND SYNC
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Auto-create and link brand
-    const brandName = (Array.isArray(p.brand_id) ? p.brand_id[1] : null) || (Array.isArray(p.custom_brand_id) ? p.custom_brand_id[1] : null) || p.brand || p.x_studio_brand_1 || null;
-    const brandOdooId = (Array.isArray(p.custom_brand_id) ? p.custom_brand_id[0] : null) || (Array.isArray(p.brand_id) ? p.brand_id[0] : null) || null;
-    // Build brand image URL from Odoo custom.product.brand model
-    const brandImageUrl = brandOdooId
-      ? `${ODOO_BASE_URL}/api/brand/image/${brandOdooId}`
-      : null;
-
-    if (brandName && typeof brandName === "string") {
-      try {
-        const brandSlug = brandName.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").substring(0, 100);
-        const existingBrand = await pg.raw(
-          `SELECT id, logo_url FROM brand WHERE slug = ? AND deleted_at IS NULL LIMIT 1`,
-          [brandSlug]
-        );
-        let brandId: string;
-        if (existingBrand.rows?.length > 0) {
-          brandId = existingBrand.rows[0].id;
-          // Always update logo_url from Odoo if we have one (Odoo is source of truth for logos)
-          const existingLogo = existingBrand.rows[0].logo_url;
-          if (brandImageUrl && (existingLogo !== brandImageUrl)) {
-            await pg.raw(
-              `UPDATE brand SET logo_url = ?, updated_at = NOW() WHERE id = ?`,
-              [brandImageUrl, brandId]
-            );
-            console.log(`[Odoo Webhook] Updated brand logo: ${brandName} -> ${brandImageUrl}`);
-          }
-        } else {
-          brandId = `brand_${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
-          await pg.raw(
-            `INSERT INTO brand (id, name, slug, is_active, is_special, logo_url, created_at, updated_at) VALUES (?, ?, ?, true, true, ?, NOW(), NOW())`,
-            [brandId, brandName, brandSlug, brandImageUrl]
-          );
-          console.log(`[Odoo Webhook] Created brand: ${brandName} (${brandId}) logo: ${brandImageUrl || "none"}`);
-        }
-        // Link product to brand
-        const existingLink = await pg.raw(
-          `SELECT id FROM product_brand WHERE product_id = ? AND brand_id = ? AND deleted_at IS NULL LIMIT 1`,
-          [prodId, brandId]
-        );
-        if (!existingLink.rows?.length) {
-          await pg.raw(
-            `INSERT INTO product_brand (id, product_id, brand_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())`,
-            [`pbr_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 8)}`, prodId, brandId]
-          );
-        }
-      } catch (brandErr: any) {
-        console.warn(`[Odoo Webhook] Brand sync failed for ${title}: ${brandErr.message}`);
-      }
-    }
-
-    return { action: "updated", productId: prodId }
-  }
-
-  // CREATE new product
-  let handle = slugify(title)
-  if (!handle) handle = `odoo-${odooId}`
-  if (existingHandles.has(handle)) handle = `${handle}-${odooId}`
-  if (existingHandles.has(handle)) handle = `${handle}-${Date.now().toString(36)}`
-  existingHandles.add(handle)
-
-  let thumbnail: string | null = p.image_url || null
-  if (!thumbnail && (p.image_1920 || p.odoo_id)) {
-    // Use direct Odoo image URL instead of saving base64 locally
-    thumbnail = getOdooImageUrl(odooId)
-  }
-
-  const productId = genId("prod")
-  await pg.raw(
-    `INSERT INTO product (id, title, handle, subtitle, description, thumbnail, status, weight, metadata, discountable, is_giftcard, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, false, NOW(), NOW())`,
-    [productId, title, handle, brand || "", description, thumbnail, status, weight, JSON.stringify(metadata)]
-  )
-
-  // Check if a variant with this SKU already exists (e.g. from a previous failed insert)
-  // and reuse it rather than crashing on duplicate SKU constraint
-  const existingVariant = await pg.raw(
-    `SELECT id FROM product_variant WHERE sku = ? AND deleted_at IS NULL LIMIT 1`,
-    [sku]
-  )
-  let variantId: string
-  if (existingVariant.rows?.length > 0) {
-    variantId = existingVariant.rows[0].id
-    await pg.raw(
-      `UPDATE product_variant SET product_id=?, barcode=COALESCE(?, barcode), updated_at=NOW() WHERE id=?`,
-      [productId, barcode, variantId]
-    )
   } else {
-    variantId = genId("variant")
-    await pg.raw(
-      `INSERT INTO product_variant (id, product_id, title, sku, barcode, manage_inventory, allow_backorder, variant_rank, created_at, updated_at) VALUES (?, ?, 'Default', ?, ?, true, false, 0, NOW(), NOW())`,
-      [variantId, productId, sku, barcode]
-    )
-  }
+    let handle = slugify(title)
+    if (!handle) handle = `odoo-${odooId}`
+    if (existingHandles.has(handle)) handle = `${handle}-${odooId}`
+    if (existingHandles.has(handle)) handle = `${handle}-${Date.now().toString(36)}`
+    existingHandles.add(handle)
 
-  // ── Price ─────────────────────────────────────────────────────────────────
-  // Always insert a KWD price
-  if (price > 0) {
-    const priceSetId = genId("pset")
-    await pg.raw(`INSERT INTO price_set (id, created_at, updated_at) VALUES (?, NOW(), NOW())`, [priceSetId])
-    await pg.raw(
-      `INSERT INTO product_variant_price_set (id, variant_id, price_set_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())`,
-      [genId("pvps"), variantId, priceSetId]
-    )
-    const rawAmount = JSON.stringify({ value: String(price), precision: 20 })
-    await pg.raw(
-      `INSERT INTO price (id, price_set_id, currency_code, amount, raw_amount, rules_count, created_at, updated_at) VALUES (?, ?, 'kwd', ?, ?, 0, NOW(), NOW())`,
-      [genId("price"), priceSetId, price, rawAmount]
-    )
-  }
+    let thumbnail: string | null = p.image_url || null
+    if (!thumbnail && (p.image_1920 || p.odoo_id)) {
+      thumbnail = getOdooImageUrl(odooId)
+    }
 
-  // ── Product Options (attributes from attribute_line_ids / attributes) ─────
-  // Writes to product_option + product_option_value tables so admin shows them
-  if (Object.keys(attributes).length > 0) {
-    try {
-      let optionRank = 0
-      for (const [attrName, attrValue] of Object.entries(attributes)) {
-        const optionId = genId("opt")
+    prodId = genId("prod")
+    action = "created"
+    await pg.raw(
+      `INSERT INTO product (id, title, handle, subtitle, description, thumbnail, status, weight, metadata, discountable, is_giftcard, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, false, NOW(), NOW())`,
+      [prodId, title, handle, brand || "", description, thumbnail, status, weight, JSON.stringify(metadata)]
+    )
+
+    if (salesChannelId) {
+      try {
         await pg.raw(
-          `INSERT INTO product_option (id, product_id, title, rank, created_at, updated_at)
-           VALUES (?, ?, ?, ?, NOW(), NOW())
-           ON CONFLICT DO NOTHING`,
-          [optionId, productId, attrName, optionRank++]
+          `INSERT INTO product_sales_channel (id, product_id, sales_channel_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW()) ON CONFLICT (product_id, sales_channel_id) DO NOTHING`,
+          [genId("psc"), prodId, salesChannelId]
         )
-        // Re-fetch the option id (in case of conflict)
-        const optRes = await pg.raw(
-          `SELECT id FROM product_option WHERE product_id = ? AND title = ? LIMIT 1`,
-          [productId, attrName]
+      } catch { /* ignore */ }
+    }
+
+    try {
+      const spRes = await pg.raw(`SELECT id FROM shipping_profile WHERE type = 'default' AND deleted_at IS NULL LIMIT 1`)
+      if (spRes.rows?.length > 0) {
+        const spId = spRes.rows[0].id
+        await pg.raw(
+          `INSERT INTO product_shipping_profile (id, product_id, shipping_profile_id, created_at, updated_at)
+           VALUES (?, ?, ?, NOW(), NOW())
+           ON CONFLICT (product_id, shipping_profile_id) DO NOTHING`,
+          ['sprod_' + prodId.replace('prod_', '').substring(0, 26), prodId, spId]
         )
-        const realOptId = optRes.rows?.[0]?.id || optionId
-        // Insert each value (comma-separated support)
-        const values = attrValue.split(",").map((v: string) => v.trim()).filter(Boolean)
-        let valueRank = 0
-        for (const val of values) {
-          const ovId = genId("optval")
-          await pg.raw(
-            `INSERT INTO product_option_value (id, option_id, value, rank, created_at, updated_at)
-             VALUES (?, ?, ?, ?, NOW(), NOW())
-             ON CONFLICT DO NOTHING`,
-            [ovId, realOptId, val, valueRank++]
-          )
-        }
-        // Link variant to option value
-        const ovRes = await pg.raw(
-          `SELECT id FROM product_option_value WHERE option_id = ? ORDER BY rank LIMIT 1`,
-          [realOptId]
-        )
-        if (ovRes.rows?.[0]?.id) {
-          await pg.raw(
-            `INSERT INTO product_variant_option_value (id, variant_id, option_value_id, created_at, updated_at)
-             VALUES (?, ?, ?, NOW(), NOW())
-             ON CONFLICT DO NOTHING`,
-            [genId("pvov"), variantId, ovRes.rows[0].id]
-          )
-        }
       }
-      console.log(`[Odoo Webhook] Wrote ${Object.keys(attributes).length} option(s) for ${sku}`)
-    } catch (err) {
-      console.warn(`[Odoo Webhook] Option write failed for ${sku}: ${err}`)
+    } catch (spErr) {
+      console.warn(`[Odoo Webhook] Shipping profile link failed for ${prodId}: ${spErr}`)
     }
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // IMAGE SYNC (create path)
-  // Insert all images from the `images` array sent by Odoo.
-  // images[0] is usually the same as image_url/thumbnail so we
-  // use the array as the single source of truth when present.
+  // IMAGE SYNC
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (p.images && Array.isArray(p.images) && p.images.length > 0) {
-    // Use the full images array — rank starts at 0
-    for (let idx = 0; idx < p.images.length; idx++) {
-      const imgUrl = p.images[idx]
-      if (!imgUrl) continue
-      await pg.raw(
-        `INSERT INTO image (id, url, rank, product_id, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())`,
-        [genId("img"), imgUrl, idx, productId]
-      )
-    }
-  } else if (thumbnail) {
-    // Fallback: only the thumbnail is known — insert it as the single image
-    await pg.raw(
-      `INSERT INTO image (id, url, rank, product_id, created_at, updated_at) VALUES (?, ?, 0, ?, NOW(), NOW())`,
-      [genId("img"), thumbnail, productId]
-    )
-  }
-
-  if (salesChannelId) {
     try {
+      await pg.raw(`DELETE FROM image WHERE product_id = ?`, [prodId])
+      for (let idx = 0; idx < p.images.length; idx++) {
+        const imgUrl = p.images[idx]
+        if (!imgUrl) continue
+        await pg.raw(
+          `INSERT INTO image (id, url, rank, product_id, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())`,
+          [genId("img"), imgUrl, idx, prodId]
+        )
+      }
       await pg.raw(
-        `INSERT INTO product_sales_channel (id, product_id, sales_channel_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW()) ON CONFLICT (product_id, sales_channel_id) DO NOTHING`,
-        [genId("psc"), productId, salesChannelId]
+        `UPDATE product SET thumbnail = ?, updated_at = NOW() WHERE id = ?`,
+        [p.images[0], prodId]
       )
-    } catch { /* ignore */ }
+      console.log(`[Odoo Webhook] Updated ${p.images.length} image(s) for product ${prodId}`)
+    } catch (imgErr) {
+      console.warn(`[Odoo Webhook] Image sync failed for ${prodId}: ${imgErr}`)
+    }
+  } else if (p.image_url) {
+    try {
+      const existImgRes = await pg.raw(`SELECT id FROM image WHERE product_id = ? LIMIT 1`, [prodId])
+      if (existImgRes.rows?.length === 0) {
+        await pg.raw(
+          `INSERT INTO image (id, url, rank, product_id, created_at, updated_at) VALUES (?, ?, 0, ?, NOW(), NOW())`,
+          [genId("img"), p.image_url, prodId]
+        )
+      }
+    } catch (imgErr) {
+      console.warn(`[Odoo Webhook] Single image sync failed: ${imgErr}`)
+    }
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // CATEGORY SYNC
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const catHandle = odooCategoryToHandle(category)
-  // Use ensureCategory on CREATE path too (same as UPDATE path)
-  // This means: if handle maps to an existing category → link it; if not → create it
-  const catIdForCreate = catHandle
-    ? await ensureCategory(pg, catHandle, category || catHandle, categoryByHandle)
-    : null
-  if (catIdForCreate) {
-    try {
-      await pg.raw(
-        `INSERT INTO product_category_product (product_id, product_category_id)
-         VALUES (?, ?)
-         ON CONFLICT (product_id, product_category_id) DO NOTHING`,
-        [productId, catIdForCreate]
-      )
-    } catch (err) {
-      console.warn(`[Odoo Webhook] Category link failed for ${productId}: ${err}`)
+  if (catHandle) {
+    const catId = await ensureCategory(pg, catHandle, category || catHandle, categoryByHandle)
+    if (catId) {
+      try {
+        await pg.raw(
+          `INSERT INTO product_category_product (product_id, product_category_id)
+           VALUES (?, ?)
+           ON CONFLICT (product_id, product_category_id) DO NOTHING`,
+          [prodId, catId]
+        )
+      } catch (err) {
+        console.warn(`[Odoo Webhook] Category link failed for ${prodId}: ${err}`)
+      }
     }
-  }
-
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // INVENTORY SYNC
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const qty = p.free_qty || 0
-  try {
-    // Create inventory_item
-    const invItemId = genId("iitem")
-    await pg.raw(
-      `INSERT INTO inventory_item (id, sku, title, created_at, updated_at)
-       VALUES (?, ?, ?, NOW(), NOW())`,
-      [invItemId, sku, title]
-    )
-    // Get default location
-    const locRes = await pg.raw(`SELECT id FROM stock_location LIMIT 1`)
-    if (locRes.rows?.length > 0) {
-      // Create inventory_level
-      await pg.raw(
-        `INSERT INTO inventory_level (id, inventory_item_id, location_id, stocked_quantity, reserved_quantity, incoming_quantity, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 0, 0, NOW(), NOW())`,
-        [genId("iloc"), invItemId, locRes.rows[0].id, qty]
-      )
-    }
-    
-    // CRITICAL FIX: Link the variant to the inventory item
-    await pg.raw(
-      `INSERT INTO product_variant_inventory_item (id, variant_id, inventory_item_id, required_quantity, created_at, updated_at)
-       VALUES (?, ?, ?, 1, NOW(), NOW())`,
-      [genId("pvitem"), variantId, invItemId]
-    )
-  } catch (err) {
-    console.warn(`[Odoo Webhook] Inventory sync failed for ${sku}: ${err}`)
-  }
-
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // SHIPPING PROFILE LINK — required for checkout to work
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  try {
-    const spRes = await pg.raw(`SELECT id FROM shipping_profile WHERE type = 'default' AND deleted_at IS NULL LIMIT 1`)
-    if (spRes.rows?.length > 0) {
-      const spId = spRes.rows[0].id
-      await pg.raw(
-        `INSERT INTO product_shipping_profile (id, product_id, shipping_profile_id, created_at, updated_at)
-         VALUES (?, ?, ?, NOW(), NOW())
-         ON CONFLICT (product_id, shipping_profile_id) DO NOTHING`,
-        ['sprod_' + productId.replace('prod_', '').substring(0, 26), productId, spId]
-      )
-    }
-  } catch (spErr) {
-    console.warn(`[Odoo Webhook] Shipping profile link failed for ${productId}: ${spErr}`)
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // BRAND SYNC
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Auto-create and link brand
   const brandName = (Array.isArray(p.brand_id) ? p.brand_id[1] : null) || (Array.isArray(p.custom_brand_id) ? p.custom_brand_id[1] : null) || p.brand || p.x_studio_brand_1 || null;
   const brandOdooId = (Array.isArray(p.custom_brand_id) ? p.custom_brand_id[0] : null) || (Array.isArray(p.brand_id) ? p.brand_id[0] : null) || null;
-  // Build brand image URL from Odoo custom.product.brand model
   const brandImageUrl = brandOdooId
-    ? `${ODOO_BASE_URL}/web/image/custom.product.brand/${brandOdooId}/image_1920`
+    ? `${ODOO_BASE_URL}/api/brand/image/${brandOdooId}`
     : null;
 
   if (brandName && typeof brandName === "string") {
@@ -913,14 +874,12 @@ async function upsertProduct(
       let brandId: string;
       if (existingBrand.rows?.length > 0) {
         brandId = existingBrand.rows[0].id;
-        // Always update logo_url from Odoo if we have one (Odoo is source of truth for logos)
         const existingLogo = existingBrand.rows[0].logo_url;
         if (brandImageUrl && (existingLogo !== brandImageUrl)) {
           await pg.raw(
             `UPDATE brand SET logo_url = ?, updated_at = NOW() WHERE id = ?`,
             [brandImageUrl, brandId]
           );
-          console.log(`[Odoo Webhook] Updated brand logo: ${brandName} -> ${brandImageUrl}`);
         }
       } else {
         brandId = `brand_${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
@@ -928,17 +887,15 @@ async function upsertProduct(
           `INSERT INTO brand (id, name, slug, is_active, is_special, logo_url, created_at, updated_at) VALUES (?, ?, ?, true, true, ?, NOW(), NOW())`,
           [brandId, brandName, brandSlug, brandImageUrl]
         );
-        console.log(`[Odoo Webhook] Created brand: ${brandName} (${brandId}) logo: ${brandImageUrl || "none"}`);
       }
-      // Link product to brand
       const existingLink = await pg.raw(
         `SELECT id FROM product_brand WHERE product_id = ? AND brand_id = ? AND deleted_at IS NULL LIMIT 1`,
-        [productId, brandId]
+        [prodId, brandId]
       );
       if (!existingLink.rows?.length) {
         await pg.raw(
           `INSERT INTO product_brand (id, product_id, brand_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())`,
-          [`pbr_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 8)}`, productId, brandId]
+          [`pbr_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 8)}`, prodId, brandId]
         );
       }
     } catch (brandErr: any) {
@@ -946,7 +903,12 @@ async function upsertProduct(
     }
   }
 
-  return { action: "created", productId }
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // VARIANTS, PRICES, INVENTORY & OPTIONS SYNC
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  await syncProductVariantsAndOptions(pg, prodId, p, sku, attributes)
+
+  return { action, productId: prodId }
 }
 
 export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
