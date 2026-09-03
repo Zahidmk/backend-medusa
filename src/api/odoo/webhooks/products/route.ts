@@ -640,7 +640,8 @@ async function upsertProduct(
   const price = Math.round(rawPrice * KWD_FILS_DIVISOR)
   const description = p.description_sale || p.description || ""
   const weight = p.weight ? String(p.weight) : null
-  const status = p.is_published === false ? "draft" : "published"
+  const isPubFlag = p.is_published === true || p.website_published === true || p.published === true || p.x_studio_published === true || String(p.is_published) === "true" || String(p.website_published) === "true"
+  const status = isPubFlag ? "published" : "draft"
 
   const rawBarcode = p.barcode || null
   const barcode = rawBarcode
@@ -945,16 +946,16 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
   if (!event_type) {
     if (body.products && Array.isArray(body.products)) {
       event_type = "product.bulk"
-    } else if (body.id && body.name) {
+    } else if (body.id || body.odoo_id || body.product_id || body.name || body.default_code || body.barcode) {
       // Odoo sends fields at root level — wrap into expected shape
       event_type = "product.created"
       if (!body.product) {
         body.product = { ...body }
-        body.product.odoo_id = body.product.odoo_id || body.product.id
+        body.product.odoo_id = body.product.odoo_id || body.product.id || body.product.product_id || body.product.template_id
       }
-    } else if (body.product?.id || body.product?.odoo_id) {
+    } else if (body.product?.id || body.product?.odoo_id || body.product?.product_id) {
       event_type = "product.created"
-      if (!body.product.odoo_id) body.product.odoo_id = body.product.id
+      if (!body.product.odoo_id) body.product.odoo_id = body.product.id || body.product.product_id || body.product.template_id
     } else {
       console.warn(`[Odoo Webhook] 400 - missing event_type. Body: ${JSON.stringify(body).substring(0,300)}`)
       return res.status(400).json({ type: "invalid_data", message: "event_type is required" })

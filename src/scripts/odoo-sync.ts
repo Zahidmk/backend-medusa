@@ -247,7 +247,7 @@ export default async function odooSync({ container }: ExecArgs) {
       const brandOdooId = (Array.isArray(p.custom_brand_id) ? p.custom_brand_id[0] : null) || (Array.isArray(p.brand_id) ? p.brand_id[0] : null) || null;
       const brand = brandName;
       const category = p.categ_id && Array.isArray(p.categ_id) ? p.categ_id[1] : null
-      const status = p.is_published === false ? "draft" : "published"
+      const status = ((p as any).is_published === true || (p as any).website_published === true) ? "published" : "draft"
 
       const metadata = JSON.stringify({
         odoo_id: p.id, odoo_sku: sku, odoo_barcode: p.barcode || null,
