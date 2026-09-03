@@ -40,6 +40,7 @@
     "deploy:fresh": "npm run db:migrate && npm run setup:store && npm run sync:all",
     "deploy:production": "npm run prod:build && npm run db:migrate && npm run setup:store && npm run sync:all",
     "sync:odoo": "medusa exec ./src/scripts/odoo-sync.ts",
+    "cleanup:duplicates": "medusa exec ./src/scripts/cleanup-duplicates.ts",
     "sync:inventory": "medusa exec ./src/scripts/odoo-inventory-sync.ts",
     "sync:images": "medusa exec ./src/scripts/sync-odoo-images.ts",
     "sync:orders": "medusa exec ./src/scripts/sync-odoo-orders.ts",
