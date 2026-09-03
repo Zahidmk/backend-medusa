@@ -459,20 +459,33 @@ async function syncProductVariantsAndOptions(
     }
 
     let vid: string
+    let safeVarBarcode: string | null = null
+    if (typeof varBarcode === 'string' && varBarcode.trim() !== '' && varBarcode !== 'false') {
+      const candidate = varBarcode.trim()
+      const existingBc = await pg.raw(
+        `SELECT id FROM product_variant WHERE barcode = ? AND deleted_at IS NULL LIMIT 1`,
+        [candidate]
+      )
+      // Only set barcode if not used by any variant, or if used by this exact variant
+      if (!existingBc.rows?.length || (varRes.rows?.length > 0 && existingBc.rows[0].id === varRes.rows[0].id)) {
+        safeVarBarcode = candidate
+      }
+    }
+
     if (varRes.rows?.length > 0) {
       vid = varRes.rows[0].id
       await pg.raw(
         `UPDATE product_variant 
          SET product_id = ?, title = ?, sku = ?, barcode = COALESCE(?, barcode), metadata = ?, allow_backorder = true, variant_rank = ?, updated_at = NOW() 
          WHERE id = ?`,
-        [prodId, varTitle, varSku, varBarcode, JSON.stringify(varMetadata), idx, vid]
+        [prodId, varTitle, varSku, safeVarBarcode, JSON.stringify(varMetadata), idx, vid]
       )
     } else {
       vid = genId("variant")
       await pg.raw(
         `INSERT INTO product_variant (id, product_id, title, sku, barcode, manage_inventory, allow_backorder, variant_rank, metadata, created_at, updated_at) 
          VALUES (?, ?, ?, ?, ?, true, true, ?, ?, NOW(), NOW())`,
-        [vid, prodId, varTitle, varSku, varBarcode, idx, JSON.stringify(varMetadata)]
+        [vid, prodId, varTitle, varSku, safeVarBarcode, idx, JSON.stringify(varMetadata)]
       )
     }
 

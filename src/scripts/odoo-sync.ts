@@ -210,6 +210,10 @@ export default async function odooSync({ container }: ExecArgs) {
   const existingBySku = new Map<string, string>()
   for (const row of skuRes.rows || []) existingBySku.set(row.sku.trim(), row.product_id)
 
+  const bcRes = await pg.raw(`SELECT pv.barcode, pv.id FROM product_variant pv JOIN product p ON p.id = pv.product_id WHERE pv.barcode IS NOT NULL AND pv.barcode != '' AND p.deleted_at IS NULL AND pv.deleted_at IS NULL`)
+  const existingBarcodes = new Map<string, string>()
+  for (const row of bcRes.rows || []) existingBarcodes.set(row.barcode.trim(), row.id)
+
   const scRes = await pg.raw(`SELECT id FROM sales_channel WHERE deleted_at IS NULL LIMIT 1`)
   const salesChannelId = scRes.rows?.[0]?.id || null
 
@@ -328,9 +332,18 @@ export default async function odooSync({ container }: ExecArgs) {
         )
 
         const variantId = genId("variant")
+        let safeBarcode: string | null = null
+        if (typeof p.barcode === 'string' && p.barcode.trim() !== '' && p.barcode !== 'false') {
+          const candidate = p.barcode.trim()
+          if (!existingBarcodes.has(candidate)) {
+            safeBarcode = candidate
+            existingBarcodes.set(candidate, variantId)
+          }
+        }
+
         await pg.raw(
           `INSERT INTO product_variant (id,product_id,title,sku,barcode,manage_inventory,allow_backorder,variant_rank,created_at,updated_at) VALUES (?,?,'Default',?,?,true,false,0,NOW(),NOW())`,
-          [variantId, productId, sku, p.barcode || null]
+          [variantId, productId, sku, safeBarcode]
         )
 
         // Assign Shipping Profile
