@@ -142,6 +142,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const productIds = products.map((p: any) => p.id)
     let imagesByProduct: Record<string, any[]> = {}
     let variantsByProduct: Record<string, any[]> = {}
+    let optionsByProduct: Record<string, any[]> = {}
+    let optionsByVariant: Record<string, any[]> = {}
     
     if (productIds.length > 0) {
       const placeholders = productIds.map(() => "?").join(",")
@@ -182,6 +184,49 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         productMetadataMap[p.id] = typeof p.metadata === "string" ? JSON.parse(p.metadata) : (p.metadata || {})
       })
 
+      // Fetch options for products
+      const optionsResult = await pgConnection.raw(
+        `SELECT po.id as option_id, po.product_id, po.title, pov.id as value_id, pov.value
+         FROM product_option po
+         LEFT JOIN product_option_value pov ON pov.option_id = po.id
+         WHERE po.product_id IN (${placeholders})
+         ORDER BY po.id, pov.id`,
+        productIds
+      )
+      const optionMap: Record<string, { id: string; title: string; values: any[] }> = {}
+
+      for (const row of optionsResult.rows || []) {
+        if (!optionsByProduct[row.product_id]) optionsByProduct[row.product_id] = []
+        const key = `${row.product_id}:::${row.option_id}`
+        if (!optionMap[key]) {
+          const optObj = { id: row.option_id, title: row.title, values: [] as any[] }
+          optionMap[key] = optObj
+          optionsByProduct[row.product_id].push(optObj)
+        }
+        if (row.value_id && row.value) {
+          if (!optionMap[key].values.some((v: any) => v.value === row.value)) {
+            optionMap[key].values.push({ id: row.value_id, value: row.value })
+          }
+        }
+      }
+
+      // Fetch variant option values
+      const varOptsResult = await pgConnection.raw(
+        `SELECT pvo.variant_id, po.title as option_title, pov.value
+         FROM product_variant_option pvo
+         JOIN product_option_value pov ON pov.id = pvo.option_value_id
+         JOIN product_option po ON po.id = pov.option_id
+         WHERE po.product_id IN (${placeholders})`,
+        productIds
+      )
+      for (const row of varOptsResult.rows || []) {
+        if (!optionsByVariant[row.variant_id]) optionsByVariant[row.variant_id] = []
+        optionsByVariant[row.variant_id].push({
+          option: { title: row.option_title },
+          value: row.value,
+        })
+      }
+
       variants.forEach((v: any) => {
         if (!variantsByProduct[v.product_id]) {
           variantsByProduct[v.product_id] = []
@@ -220,6 +265,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           allow_backorder: v.allow_backorder,
           metadata: vMeta,
           prices: prices,
+          options: optionsByVariant[v.id] || [],
         })
       })
     }
@@ -245,6 +291,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         currency_code: mainCurrency,
         sku: firstVariant?.sku || null,
         images: imagesByProduct[p.id] || [],
+        options: optionsByProduct[p.id] || [],
         metadata: meta,
         created_at: p.created_at,
         collection_id: p.collection_id,
