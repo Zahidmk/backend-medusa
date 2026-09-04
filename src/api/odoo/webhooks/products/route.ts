@@ -311,6 +311,46 @@ async function ensureCategory(
 }
 
 /**
+ * Resolve a flat {attribute: value} map from an Odoo-supplied `attributes` field.
+ *
+ * Odoo is expected to send a flat object, e.g. {"color": "Red"}. If it instead sends
+ * an array (Odoo's template-wide attribute/value-list shape, not a per-variant value)
+ * that is explicitly rejected and logged rather than silently treated as empty, so a
+ * malformed payload is visible in logs instead of just producing options-less variants.
+ */
+function resolveAttributesMap(raw: unknown, context: string, warn: boolean): Record<string, string> {
+  if (!raw) return {}
+  if (Array.isArray(raw)) {
+    if (warn) {
+      console.warn(
+        `[Odoo Webhook] Rejected malformed 'attributes' for ${context}: expected a flat ` +
+        `{attribute: value} object but received an array. Raw value: ${JSON.stringify(raw).slice(0, 500)}`
+      )
+    }
+    return {}
+  }
+  if (typeof raw === "object") {
+    return raw as Record<string, string>
+  }
+  if (warn) {
+    console.warn(`[Odoo Webhook] Rejected malformed 'attributes' for ${context}: expected an object, got ${typeof raw}.`)
+  }
+  return {}
+}
+
+/**
+ * True if any value in a resolved attributes map is a comma-joined multi-value string
+ * (e.g. "Red, Blue"). A single variant cannot legitimately have two values for one option,
+ * so this shape indicates an aggregate/template-wide list leaked into a per-variant field.
+ */
+function hasAmbiguousValue(attrs: Record<string, string>): boolean {
+  return Object.values(attrs).some((val) => {
+    const parts = String(val).split(",").map((s) => s.trim()).filter(Boolean)
+    return parts.length > 1
+  })
+}
+
+/**
  * Sync variants, prices, inventory items, options, and option values for a product.
  * Supports both multi-variant payloads (p.variants array) and single-variant fallback.
  */
@@ -341,62 +381,118 @@ async function syncProductVariantsAndOptions(
     ]
   }
 
-  // 2. Extract options and option values across all variants
-  const optionValuesMap: Record<string, Set<string>> = {}
+  // 2. Classify each variant's attributes: resolve to a flat map, and detect ambiguity.
+  // A variant's attributes are "ambiguous" when they cannot be trusted to represent that
+  // variant's own selection — malformed shape, a comma-joined multi-value (invalid for a
+  // single variant), or a template-wide fallback that can't distinguish sibling variants.
+  // Ambiguous variants still get synced for their core commerce fields (SKU/price/stock —
+  // see step 3) but are never used to create or overwrite product_option /
+  // product_variant_option data.
+  const resolvedVariantAttrs: Record<string, string>[] = []
+  const variantAmbiguous: boolean[] = []
   for (const v of rawVariants) {
-    const vAttrs = (v.attributes && typeof v.attributes === "object" && !Array.isArray(v.attributes))
-      ? v.attributes
-      : templateAttributes
+    const ctx = `variant ${v.variant_id} of product "${p.name}" (odoo_id=${p.odoo_id})`
+    const hasOwnAttrs = v.attributes !== undefined && v.attributes !== null
+    const malformedShape = hasOwnAttrs && (Array.isArray(v.attributes) || typeof v.attributes !== "object")
+    const ownAttrs = resolveAttributesMap(v.attributes, ctx, true) // logs a warning on malformed shape
+    const usingTemplateFallback = Object.keys(ownAttrs).length === 0
+    const vAttrs = usingTemplateFallback ? templateAttributes : ownAttrs
+    resolvedVariantAttrs.push(vAttrs)
 
-    for (const [key, val] of Object.entries(vAttrs)) {
-      if (!key || val === undefined || val === null) continue
-      const valStr = String(val).trim()
-      if (!valStr) continue
-      if (!optionValuesMap[key]) {
-        optionValuesMap[key] = new Set<string>()
-      }
-      for (const singleVal of valStr.split(",").map(s => s.trim()).filter(Boolean)) {
-        optionValuesMap[key].add(singleVal)
+    let ambiguous = malformedShape
+    if (!ambiguous && hasAmbiguousValue(vAttrs)) {
+      console.warn(
+        `[Odoo Webhook] Rejected ambiguous 'attributes' for ${ctx}: a value contains multiple ` +
+        `comma-separated entries, which is invalid for a single variant. Resolved value: ${JSON.stringify(vAttrs)}`
+      )
+      ambiguous = true
+    }
+    if (!ambiguous && usingTemplateFallback && rawVariants.length > 1) {
+      console.warn(
+        `[Odoo Webhook] No per-variant 'attributes' for ${ctx}; falling back to template-wide ` +
+        `attributes cannot distinguish this variant from its siblings — rejecting for option assignment.`
+      )
+      ambiguous = true
+    }
+    variantAmbiguous.push(ambiguous)
+  }
+
+  // If every variant that DID resolve non-empty attributes ended up identical, Odoo is most
+  // likely sending the template's full attribute/value list to each variant instead of that
+  // variant's own selected value. Treat all of them as ambiguous too.
+  if (rawVariants.length > 1) {
+    const nonAmbiguousNonEmpty = resolvedVariantAttrs
+      .map((a, i) => ({ a, i }))
+      .filter(({ a, i }) => !variantAmbiguous[i] && Object.keys(a).length > 0)
+    if (nonAmbiguousNonEmpty.length > 1) {
+      const first = JSON.stringify(nonAmbiguousNonEmpty[0].a)
+      if (nonAmbiguousNonEmpty.every(({ a }) => JSON.stringify(a) === first)) {
+        console.warn(
+          `[Odoo Webhook] All ${nonAmbiguousNonEmpty.length} variants of product "${p.name}" (odoo_id=${p.odoo_id}) ` +
+          `resolved to identical attribute values (${first}). This usually means Odoo sent the template's ` +
+          `full attribute/value list instead of each variant's own selected value — rejecting for all affected variants.`
+        )
+        for (const { i } of nonAmbiguousNonEmpty) variantAmbiguous[i] = true
       }
     }
   }
 
-  // Ensure product_option and product_option_value records exist
+  // 3. Build product_option / product_option_value only from variants with usable attributes.
+  // If none exist, leave any existing option data untouched rather than partially rebuilding it.
+  const optionValuesMap: Record<string, Set<string>> = {}
+  for (let i = 0; i < rawVariants.length; i++) {
+    if (variantAmbiguous[i]) continue
+    for (const [key, val] of Object.entries(resolvedVariantAttrs[i])) {
+      if (!key || val === undefined || val === null) continue
+      const valStr = String(val).trim()
+      if (!valStr) continue
+      if (!optionValuesMap[key]) optionValuesMap[key] = new Set<string>()
+      optionValuesMap[key].add(valStr)
+    }
+  }
+
   const optionValueIdMap: Map<string, string> = new Map()
 
-  for (const [optTitle, valSet] of Object.entries(optionValuesMap)) {
-    let optId = genId("opt")
-    await pg.raw(
-      `INSERT INTO product_option (id, product_id, title, created_at, updated_at)
-       VALUES (?, ?, ?, NOW(), NOW())
-       ON CONFLICT DO NOTHING`,
-      [optId, prodId, optTitle]
-    )
-    const optRes = await pg.raw(
-      `SELECT id FROM product_option WHERE product_id = ? AND title = ? AND deleted_at IS NULL LIMIT 1`,
-      [prodId, optTitle]
-    )
-    if (optRes.rows?.length > 0) {
-      optId = optRes.rows[0].id
-    }
-
-    for (const optVal of Array.from(valSet)) {
-      let optValId = genId("optval")
+  if (Object.keys(optionValuesMap).length > 0) {
+    for (const [optTitle, valSet] of Object.entries(optionValuesMap)) {
+      let optId = genId("opt")
       await pg.raw(
-        `INSERT INTO product_option_value (id, option_id, value, created_at, updated_at)
+        `INSERT INTO product_option (id, product_id, title, created_at, updated_at)
          VALUES (?, ?, ?, NOW(), NOW())
          ON CONFLICT DO NOTHING`,
-        [optValId, optId, optVal]
+        [optId, prodId, optTitle]
       )
-      const valRes = await pg.raw(
-        `SELECT id FROM product_option_value WHERE option_id = ? AND value = ? AND deleted_at IS NULL LIMIT 1`,
-        [optId, optVal]
+      const optRes = await pg.raw(
+        `SELECT id FROM product_option WHERE product_id = ? AND title = ? AND deleted_at IS NULL LIMIT 1`,
+        [prodId, optTitle]
       )
-      if (valRes.rows?.length > 0) {
-        optValId = valRes.rows[0].id
+      if (optRes.rows?.length > 0) {
+        optId = optRes.rows[0].id
       }
-      optionValueIdMap.set(`${optTitle}:::${optVal}`, optValId)
+
+      for (const optVal of Array.from(valSet)) {
+        let optValId = genId("optval")
+        await pg.raw(
+          `INSERT INTO product_option_value (id, option_id, value, created_at, updated_at)
+           VALUES (?, ?, ?, NOW(), NOW())
+           ON CONFLICT DO NOTHING`,
+          [optValId, optId, optVal]
+        )
+        const valRes = await pg.raw(
+          `SELECT id FROM product_option_value WHERE option_id = ? AND value = ? AND deleted_at IS NULL LIMIT 1`,
+          [optId, optVal]
+        )
+        if (valRes.rows?.length > 0) {
+          optValId = valRes.rows[0].id
+        }
+        optionValueIdMap.set(`${optTitle}:::${optVal}`, optValId)
+      }
     }
+  } else if (variantAmbiguous.some(Boolean)) {
+    console.warn(
+      `[Odoo Webhook] Skipping product_option sync for product "${p.name}" (odoo_id=${p.odoo_id}): ` +
+      `no variant in this payload had usable per-variant attributes. Existing option data, if any, is left untouched.`
+    )
   }
 
   // 3. Process variants
@@ -416,19 +512,25 @@ async function syncProductVariantsAndOptions(
     const varPrice = Math.round(varPriceRaw * KWD_FILS_DIVISOR)
     const varQty = v.free_qty ?? 0
     const varExpoTemplateId = v.oskar_expo_template_id || false
-    const vAttrs = (v.attributes && typeof v.attributes === "object" && !Array.isArray(v.attributes))
-      ? v.attributes
-      : templateAttributes
+    // Reuse the value already resolved (and logged) in step 2 — avoids double-warning per variant.
+    const vAttrs = resolvedVariantAttrs[idx]
+    const isAmbiguous = variantAmbiguous[idx]
 
-    let varTitle = "Default"
-    const attrValues = Object.values(vAttrs).filter(Boolean)
-    if (attrValues.length > 0) {
-      varTitle = attrValues.join(" / ")
-    } else if (v.name) {
-      varTitle = v.name
-    } else if (rawVariants.length > 1) {
-      varTitle = `Variant ${varOdooId}`
+    // Safe fallback title — NEVER the product/template name (that's what caused a broken
+    // sync to show every variant labeled with the product's own name, e.g. "Apple 19").
+    const safeFallbackTitle = rawVariants.length > 1 ? `Variant ${varOdooId}` : "Default"
+
+    let varTitle = safeFallbackTitle
+    if (!isAmbiguous) {
+      const attrValues = Object.values(vAttrs).filter(Boolean)
+      if (attrValues.length > 0) {
+        varTitle = attrValues.join(" / ")
+      } else if (v.name) {
+        varTitle = v.name
+      }
     }
+    // Ambiguous-attribute case is resolved below, once we know whether the variant already
+    // exists — an existing "real" title is preserved rather than downgraded to the fallback.
 
     const varMetadata: Record<string, any> = {
       odoo_variant_id: varOdooId,
@@ -440,22 +542,28 @@ async function syncProductVariantsAndOptions(
     }
 
     let varRes = await pg.raw(
-      `SELECT id FROM product_variant WHERE product_id = ? AND metadata->>'odoo_variant_id' = ? AND deleted_at IS NULL LIMIT 1`,
+      `SELECT id, title FROM product_variant WHERE product_id = ? AND metadata->>'odoo_variant_id' = ? AND deleted_at IS NULL LIMIT 1`,
       [prodId, String(varOdooId)]
     )
 
     if (!varRes.rows?.length && varSku) {
       varRes = await pg.raw(
-        `SELECT id FROM product_variant WHERE sku = ? AND deleted_at IS NULL LIMIT 1`,
+        `SELECT id, title FROM product_variant WHERE sku = ? AND deleted_at IS NULL LIMIT 1`,
         [varSku]
       )
     }
 
     if (!varRes.rows?.length && rawVariants.length === 1) {
       varRes = await pg.raw(
-        `SELECT id FROM product_variant WHERE product_id = ? AND deleted_at IS NULL LIMIT 1`,
+        `SELECT id, title FROM product_variant WHERE product_id = ? AND deleted_at IS NULL LIMIT 1`,
         [prodId]
       )
+    }
+
+    // Ambiguous attributes must never downgrade an existing (possibly already-correct)
+    // title — only apply the safe fallback when the variant row is being created fresh.
+    if (isAmbiguous && varRes.rows?.length > 0) {
+      varTitle = varRes.rows[0].title
     }
 
     let vid: string
@@ -585,27 +693,32 @@ async function syncProductVariantsAndOptions(
       console.warn(`[Odoo Webhook] Inventory sync failed for variant ${varSku}: ${err}`)
     }
 
-    // Option Values Link
-    try {
-      await pg.raw(`DELETE FROM product_variant_option WHERE variant_id = ?`, [vid])
+    // Option Values Link — skipped entirely for ambiguous attributes so a bad sync can
+    // never wipe out or corrupt existing (possibly manually-fixed) variant/option links.
+    if (isAmbiguous) {
+      console.warn(
+        `[Odoo Webhook] Skipping option-value link for variant ${vid} (sku=${varSku}, odoo_variant_id=${varOdooId}) ` +
+        `of product "${p.name}": attributes were ambiguous. Existing links, if any, are left untouched.`
+      )
+    } else {
+      try {
+        await pg.raw(`DELETE FROM product_variant_option WHERE variant_id = ?`, [vid])
 
-      for (const [optKey, optVal] of Object.entries(vAttrs)) {
-        if (!optKey || !optVal) continue
-        const vals = String(optVal).split(",").map(s => s.trim()).filter(Boolean)
-        for (const singleVal of vals) {
-          const optValId = optionValueIdMap.get(`${optKey}:::${singleVal}`)
+        for (const [optKey, optVal] of Object.entries(vAttrs)) {
+          if (!optKey || !optVal) continue
+          const optValId = optionValueIdMap.get(`${optKey}:::${String(optVal).trim()}`)
           if (optValId) {
             await pg.raw(
-              `INSERT INTO product_variant_option (variant_id, option_value_id) 
-               VALUES (?, ?) 
+              `INSERT INTO product_variant_option (variant_id, option_value_id)
+               VALUES (?, ?)
                ON CONFLICT DO NOTHING`,
               [vid, optValId]
             )
           }
         }
+      } catch (err) {
+        console.warn(`[Odoo Webhook] Variant option value link failed for variant ${vid}: ${err}`)
       }
-    } catch (err) {
-      console.warn(`[Odoo Webhook] Variant option value link failed for variant ${vid}: ${err}`)
     }
   }
 
@@ -674,10 +787,12 @@ async function upsertProduct(
   const category = categoryForMapping
     || (p.categ_id && Array.isArray(p.categ_id) ? p.categ_id[1] : null)
 
-  let attributes: Record<string, string> = {}
-  if (p.attributes && typeof p.attributes === 'object' && !Array.isArray(p.attributes)) {
-    attributes = p.attributes
-  } else if (p.attribute_line_ids) {
+  let attributes: Record<string, string> = resolveAttributesMap(
+    p.attributes,
+    `product "${p.name}" (odoo_id=${p.odoo_id}) template-level attributes`,
+    true
+  )
+  if (Object.keys(attributes).length === 0 && p.attribute_line_ids) {
     if (Array.isArray(p.attribute_line_ids)) {
       for (const line of p.attribute_line_ids as Array<{name: string; values: string[]}>) {
         if (line.name && Array.isArray(line.values) && line.values.length > 0) {
