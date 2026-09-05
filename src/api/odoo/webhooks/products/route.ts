@@ -313,27 +313,33 @@ async function ensureCategory(
 /**
  * Resolve a flat {attribute: value} map from an Odoo-supplied `attributes` field.
  *
- * Odoo is expected to send a flat object, e.g. {"color": "Red"}. If it instead sends
- * an array (Odoo's template-wide attribute/value-list shape, not a per-variant value)
- * that is explicitly rejected and logged rather than silently treated as empty, so a
- * malformed payload is visible in logs instead of just producing options-less variants.
+ * Supports both:
+ * 1. Object shape: { "color": "Blue" }
+ * 2. Array of objects shape: [ { "attribute": "color", "value": "Blue" } ] or [ { "attribute": "color", "values": ["Blue", "Black"] } ]
  */
 function resolveAttributesMap(raw: unknown, context: string, warn: boolean): Record<string, string> {
   if (!raw) return {}
   if (Array.isArray(raw)) {
-    if (warn) {
-      console.warn(
-        `[Odoo Webhook] Rejected malformed 'attributes' for ${context}: expected a flat ` +
-        `{attribute: value} object but received an array. Raw value: ${JSON.stringify(raw).slice(0, 500)}`
-      )
+    const result: Record<string, string> = {}
+    for (const item of raw) {
+      if (item && typeof item === "object") {
+        const attrName = (item as any).attribute || (item as any).name || (item as any).key
+        if (!attrName) continue
+        const key = String(attrName).trim()
+        if ((item as any).value !== undefined && (item as any).value !== null) {
+          result[key] = String((item as any).value).trim()
+        } else if (Array.isArray((item as any).values)) {
+          result[key] = (item as any).values.map((v: any) => String(v).trim()).join(", ")
+        }
+      }
     }
-    return {}
+    return result
   }
   if (typeof raw === "object") {
     return raw as Record<string, string>
   }
   if (warn) {
-    console.warn(`[Odoo Webhook] Rejected malformed 'attributes' for ${context}: expected an object, got ${typeof raw}.`)
+    console.warn(`[Odoo Webhook] Rejected malformed 'attributes' for ${context}: expected object or array, got ${typeof raw}.`)
   }
   return {}
 }
