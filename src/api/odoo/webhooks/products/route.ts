@@ -902,10 +902,10 @@ async function upsertProduct(
 
   if (existBySku.rows?.length > 0) {
     prodId = existBySku.rows[0].id
-    action = "updated"
+    const effectiveImgUrl = p.image_url || (p.images && p.images[0]) || (odooId ? getOdooImageUrl(odooId) : null)
     await pg.raw(
-      `UPDATE product SET title=?, description=?, weight=?, metadata=?, status=?, thumbnail=COALESCE(?, thumbnail), updated_at=NOW() WHERE id=?`,
-      [title, description, weight, JSON.stringify(metadata), status, p.image_url || null, prodId]
+      `UPDATE product SET title=?, description=?, weight=?, metadata=?, status=?, thumbnail=COALESCE(?, thumbnail, ?), updated_at=NOW() WHERE id=?`,
+      [title, description, weight, JSON.stringify(metadata), status, effectiveImgUrl, effectiveImgUrl, prodId]
     )
   } else {
     let handle = slugify(title)
@@ -914,10 +914,7 @@ async function upsertProduct(
     if (existingHandles.has(handle)) handle = `${handle}-${Date.now().toString(36)}`
     existingHandles.add(handle)
 
-    let thumbnail: string | null = p.image_url || null
-    if (!thumbnail && (p.image_1920 || p.odoo_id)) {
-      thumbnail = getOdooImageUrl(odooId)
-    }
+    let thumbnail: string | null = p.image_url || (p.images && p.images[0]) || (odooId ? getOdooImageUrl(odooId) : null)
 
     prodId = genId("prod")
     action = "created"

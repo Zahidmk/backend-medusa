@@ -272,17 +272,22 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     // Format response
     const formattedProducts = products.map((p: any) => {
-      const meta = typeof p.metadata === "string" ? JSON.parse(p.metadata) : (p.metadata || {})
-      const variants = variantsByProduct[p.id] || []
-      const firstVariant = variants[0]
-      const firstPrice = firstVariant?.prices?.[0]
-      const price = firstVariant?.price ?? (firstPrice ? firstPrice.amount : null)
-      const mainCurrency = firstPrice?.currency_code || currency
+      const productImages = imagesByProduct[p.id] || []
+      const odooId = meta.odoo_id || meta.product_tmpl_id
+      const odooImg = (odooId && String(odooId) !== 'false') ? `https://oskarllc-new-36501645.dev.odoo.com/web/image/product.template/${odooId}/image_1920` : null
+      const firstImgUrl = productImages[0]?.url
+      const finalThumbnail = (p.thumbnail && p.thumbnail !== 'false') ? p.thumbnail : (meta.image_url || firstImgUrl || odooImg || null)
+      
+      let finalImages = productImages
+      if (finalImages.length === 0 && finalThumbnail) {
+        finalImages = [{ id: "img_main", url: finalThumbnail }]
+      }
+
       return {
         id: p.id,
         title: p.title,
         handle: p.handle,
-        thumbnail: p.thumbnail,
+        thumbnail: finalThumbnail,
         subtitle: p.subtitle,
         description: p.description,
         price: price,
@@ -290,7 +295,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         original_price: price,
         currency_code: mainCurrency,
         sku: firstVariant?.sku || null,
-        images: imagesByProduct[p.id] || [],
+        images: finalImages,
         options: optionsByProduct[p.id] || [],
         metadata: meta,
         created_at: p.created_at,
