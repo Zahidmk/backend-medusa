@@ -399,8 +399,8 @@ async function syncProductVariantsAndOptions(
   for (const v of rawVariants) {
     const ctx = `variant ${v.variant_id} of product "${p.name}" (odoo_id=${p.odoo_id})`
     const hasOwnAttrs = v.attributes !== undefined && v.attributes !== null
-    const malformedShape = hasOwnAttrs && (Array.isArray(v.attributes) || typeof v.attributes !== "object")
-    const ownAttrs = resolveAttributesMap(v.attributes, ctx, true) // logs a warning on malformed shape
+    const ownAttrs = resolveAttributesMap(v.attributes, ctx, true)
+    const malformedShape = hasOwnAttrs && typeof v.attributes !== "object"
     const usingTemplateFallback = Object.keys(ownAttrs).length === 0
     const vAttrs = usingTemplateFallback ? templateAttributes : ownAttrs
     resolvedVariantAttrs.push(vAttrs)
