@@ -325,7 +325,8 @@ function resolveAttributesMap(raw: unknown, context: string, warn: boolean): Rec
       if (item && typeof item === "object") {
         const attrName = (item as any).attribute || (item as any).name || (item as any).key
         if (!attrName) continue
-        const key = String(attrName).trim()
+        const rawKey = String(attrName).trim()
+        const key = rawKey.charAt(0).toUpperCase() + rawKey.slice(1)
         if ((item as any).value !== undefined && (item as any).value !== null) {
           result[key] = String((item as any).value).trim()
         } else if (Array.isArray((item as any).values)) {
@@ -335,8 +336,14 @@ function resolveAttributesMap(raw: unknown, context: string, warn: boolean): Rec
     }
     return result
   }
-  if (typeof raw === "object") {
-    return raw as Record<string, string>
+  if (typeof raw === "object" && raw !== null) {
+    const result: Record<string, string> = {}
+    for (const [k, v] of Object.entries(raw)) {
+      if (!k || v === undefined || v === null) continue
+      const key = k.trim().charAt(0).toUpperCase() + k.trim().slice(1)
+      result[key] = String(v).trim()
+    }
+    return result
   }
   if (warn) {
     console.warn(`[Odoo Webhook] Rejected malformed 'attributes' for ${context}: expected object or array, got ${typeof raw}.`)
@@ -460,9 +467,13 @@ async function syncProductVariantsAndOptions(
   const optionValueIdMap: Map<string, string> = new Map()
 
   if (Object.keys(optionValuesMap).length > 0) {
-    // Delete stale 'Default' values so old fallback options don't clutter real options
+    // Delete all stale 'Default' / 'default' values and dummy options for this product
     await pg.raw(
       `DELETE FROM product_option_value WHERE (LOWER(value) = 'default' OR value = 'Default Option') AND option_id IN (SELECT id FROM product_option WHERE product_id = ?)`,
+      [prodId]
+    )
+    await pg.raw(
+      `DELETE FROM product_option WHERE product_id = ? AND (LOWER(title) = 'default' OR title = 'Default Option')`,
       [prodId]
     )
 
