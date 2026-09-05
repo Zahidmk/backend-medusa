@@ -460,6 +460,12 @@ async function syncProductVariantsAndOptions(
   const optionValueIdMap: Map<string, string> = new Map()
 
   if (Object.keys(optionValuesMap).length > 0) {
+    // Delete stale 'Default' values so old fallback options don't clutter real options
+    await pg.raw(
+      `DELETE FROM product_option_value WHERE (LOWER(value) = 'default' OR value = 'Default Option') AND option_id IN (SELECT id FROM product_option WHERE product_id = ?)`,
+      [prodId]
+    )
+
     for (const [optTitle, valSet] of Object.entries(optionValuesMap)) {
       let optId = genId("opt")
       await pg.raw(
