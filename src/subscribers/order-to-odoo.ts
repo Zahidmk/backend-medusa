@@ -138,24 +138,49 @@ async function createOdooOrder(uid: number, orderData: any, logger: any): Promis
     const orderLines: any[] = []
     for (const item of (orderData.items || [])) {
       const sku = item.variant?.sku || item.sku || ""
-      const productName = item.title || item.variant?.title || "Product"
-      
-      // Try to find matching Odoo product by SKU
-      const odooProductId = sku ? await findOdooProductBySku(uid, sku, logger) : null
-      
+
+      // 1. Prioritize direct odoo_variant_id from variant metadata (exact Odoo product.product ID)
+      let odooProductId: number | null = null
+      let vMeta: Record<string, any> = {}
+      if (typeof item.variant?.metadata === "string") {
+        try {
+          vMeta = JSON.parse(item.variant.metadata) || {}
+        } catch {
+          vMeta = {}
+        }
+      } else {
+        vMeta = item.variant?.metadata || {}
+      }
+
+      if (vMeta.odoo_variant_id != null && !isNaN(parseInt(String(vMeta.odoo_variant_id)))) {
+        odooProductId = parseInt(String(vMeta.odoo_variant_id))
+      }
+
+      // 2. Fallback to SKU search if metadata didn't have odoo_variant_id
+      if (!odooProductId && sku) {
+        odooProductId = await findOdooProductBySku(uid, sku, logger)
+      }
+
+      // 3. Build line description including full variant details (e.g. Color / Size)
+      let productName = item.title || item.variant?.title || "Product"
+      const variantTitle = item.variant_title || item.variant?.title
+      if (variantTitle && variantTitle !== "Default" && !productName.includes(variantTitle)) {
+        productName += ` (${variantTitle})`
+      }
+
       const lineData: any = {
         name: productName,
         product_uom_qty: item.quantity || 1,
         price_unit: (item.unit_price || 0) / 1000, // Convert from fils (KWD has 3 decimals)
       }
-      
-      if (odooProductId) {
+
+      if (odooProductId && !isNaN(odooProductId)) {
         lineData.product_id = odooProductId
-        logger.info(`  ✅ Matched SKU "${sku}" to Odoo product ID: ${odooProductId}`)
+        logger.info(`  ✅ Matched variant "${productName}" to Odoo product ID: ${odooProductId}`)
       } else {
         logger.warn(`  ⚠️ Could not find Odoo product for SKU: ${sku}`)
       }
-      
+
       orderLines.push([0, 0, lineData])
     }
     
