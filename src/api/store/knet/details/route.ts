@@ -18,9 +18,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     let rows: any[] = [];
 
+    // Only ever report a KNET receipt for payments actually made through the
+    // KNET provider - every order (including Cash on Delivery, which uses
+    // pp_system_default) has a payment/payment_session row, so without this
+    // filter this endpoint fabricated a "FAILED" KNET receipt for COD orders.
+    const KNET_PROVIDER_ID = "pp_knet_knet"
+
     if (orderId) {
       const orderQuery = await pgConnection.raw(
-        `SELECT 
+        `SELECT
           p.data as payment_data,
           ps.data as session_data,
           pc.amount as pc_amount,
@@ -30,15 +36,16 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
          LEFT JOIN payment p ON p.payment_collection_id = pc.id
          LEFT JOIN payment_session ps ON ps.payment_collection_id = pc.id
          WHERE opc.order_id = ?
+           AND (p.provider_id = ? OR ps.provider_id = ?)
          LIMIT 1`,
-        [orderId]
+        [orderId, KNET_PROVIDER_ID, KNET_PROVIDER_ID]
       );
       rows = orderQuery.rows || [];
     }
 
     if (rows.length === 0 && cartId) {
       const cartQuery = await pgConnection.raw(
-        `SELECT 
+        `SELECT
           p.data as payment_data,
           ps.data as session_data,
           pc.amount as pc_amount,
@@ -48,16 +55,17 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
          LEFT JOIN payment_session ps ON ps.payment_collection_id = pc.id
          LEFT JOIN payment p ON p.payment_collection_id = pc.id
          WHERE cpc.cart_id = ?
+           AND (p.provider_id = ? OR ps.provider_id = ?)
          ORDER BY ps.created_at DESC NULLS LAST
          LIMIT 1`,
-        [cartId]
+        [cartId, KNET_PROVIDER_ID, KNET_PROVIDER_ID]
       );
       rows = cartQuery.rows || [];
     }
 
     if (rows.length === 0 && trackId) {
       const trackQuery = await pgConnection.raw(
-        `SELECT 
+        `SELECT
           p.data as payment_data,
           ps.data as session_data,
           pc.amount as pc_amount,
@@ -65,9 +73,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
          FROM payment_session ps
          JOIN payment_collection pc ON pc.id = ps.payment_collection_id
          LEFT JOIN payment p ON p.payment_collection_id = pc.id
-         WHERE ps.id = ? OR ps.data->>'track_id' = ? OR ps.data->>'trackId' = ? OR ps.data->>'knet_trackid' = ?
+         WHERE (ps.id = ? OR ps.data->>'track_id' = ? OR ps.data->>'trackId' = ? OR ps.data->>'knet_trackid' = ?)
+           AND ps.provider_id = ?
          LIMIT 1`,
-        [trackId, trackId, trackId, trackId]
+        [trackId, trackId, trackId, trackId, KNET_PROVIDER_ID]
       );
       rows = trackQuery.rows || [];
     }
