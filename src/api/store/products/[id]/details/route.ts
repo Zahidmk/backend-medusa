@@ -394,6 +394,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           can_ask: true,
         },
 
+        // SEO & Meta Info (for Web head tags and Mobile App sharing/SEO)
+        meta_title: metadata.meta_title || metadata.website_meta_title || metadata.seo_title || product.title,
+        meta_description: metadata.meta_description || metadata.website_meta_description || metadata.seo_description || product.description || null,
+        seo: {
+          title: metadata.meta_title || metadata.website_meta_title || metadata.seo_title || product.title,
+          description: metadata.meta_description || metadata.website_meta_description || metadata.seo_description || product.description || null,
+          keywords: metadata.keywords || metadata.website_meta_keywords || null,
+        },
+
         // Metadata (Odoo sync info)
         odoo_id: metadata.odoo_id || null,
         brand: metadata.brand || metadata.brand_name || extractBrand(product.title),
