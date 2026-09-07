@@ -273,6 +273,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     // Format response
     const formattedProducts = products.map((p: any) => {
       const productImages = imagesByProduct[p.id] || []
+      const meta = typeof p.metadata === "string" ? (JSON.parse(p.metadata) || {}) : (p.metadata || {})
+      const pVariants = variantsByProduct[p.id] || []
+      const firstVariant = pVariants[0]
+      const price = firstVariant?.price ?? null
+      const mainCurrency = firstVariant?.currency_code || currency
+
       const odooId = meta.odoo_id || meta.product_tmpl_id
       const odooImg = (odooId && String(odooId) !== 'false') ? `https://oskarllc-new-36501645.dev.odoo.com/web/image/product.template/${odooId}/image_1920` : null
       const firstImgUrl = productImages[0]?.url
@@ -300,7 +306,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         metadata: meta,
         created_at: p.created_at,
         collection_id: p.collection_id,
-        variants: variants,
+        variants: pVariants,
       }
     })
 

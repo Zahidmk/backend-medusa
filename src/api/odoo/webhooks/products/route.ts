@@ -902,6 +902,7 @@ async function upsertProduct(
 
   if (existBySku.rows?.length > 0) {
     prodId = existBySku.rows[0].id
+    action = "updated"
     const effectiveImgUrl = p.image_url || (p.images && p.images[0]) || (odooId ? getOdooImageUrl(odooId) : null)
     await pg.raw(
       `UPDATE product SET title=?, description=?, weight=?, metadata=?, status=?, thumbnail=COALESCE(?, thumbnail, ?), updated_at=NOW() WHERE id=?`,
