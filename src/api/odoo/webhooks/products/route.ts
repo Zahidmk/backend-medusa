@@ -924,29 +924,32 @@ async function upsertProduct(
       [prodId, title, handle, brand || "", description, thumbnail, status, weight, JSON.stringify(metadata)]
     )
 
-    if (salesChannelId) {
-      try {
-        await pg.raw(
-          `INSERT INTO product_sales_channel (id, product_id, sales_channel_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW()) ON CONFLICT (product_id, sales_channel_id) DO NOTHING`,
-          [genId("psc"), prodId, salesChannelId]
-        )
-      } catch { /* ignore */ }
-    }
+  }
 
+  // Ensure Sales Channel link
+  if (salesChannelId) {
     try {
-      const spRes = await pg.raw(`SELECT id FROM shipping_profile WHERE type = 'default' AND deleted_at IS NULL LIMIT 1`)
-      if (spRes.rows?.length > 0) {
-        const spId = spRes.rows[0].id
-        await pg.raw(
-          `INSERT INTO product_shipping_profile (id, product_id, shipping_profile_id, created_at, updated_at)
-           VALUES (?, ?, ?, NOW(), NOW())
-           ON CONFLICT (product_id, shipping_profile_id) DO NOTHING`,
-          ['sprod_' + prodId.replace('prod_', '').substring(0, 26), prodId, spId]
-        )
-      }
-    } catch (spErr) {
-      console.warn(`[Odoo Webhook] Shipping profile link failed for ${prodId}: ${spErr}`)
+      await pg.raw(
+        `INSERT INTO product_sales_channel (id, product_id, sales_channel_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW()) ON CONFLICT (product_id, sales_channel_id) DO NOTHING`,
+        [genId("psc"), prodId, salesChannelId]
+      )
+    } catch { /* ignore */ }
+  }
+
+  // Ensure Default Shipping Profile link (Critical for Checkout completion)
+  try {
+    const spRes = await pg.raw(`SELECT id FROM shipping_profile WHERE type = 'default' AND deleted_at IS NULL LIMIT 1`)
+    if (spRes.rows?.length > 0) {
+      const spId = spRes.rows[0].id
+      await pg.raw(
+        `INSERT INTO product_shipping_profile (id, product_id, shipping_profile_id, created_at, updated_at)
+         VALUES (?, ?, ?, NOW(), NOW())
+         ON CONFLICT (product_id, shipping_profile_id) DO NOTHING`,
+        ['sprod_' + prodId.replace('prod_', '').substring(0, 26), prodId, spId]
+      )
     }
+  } catch (spErr) {
+    console.warn(`[Odoo Webhook] Shipping profile link failed for ${prodId}: ${spErr}`)
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
