@@ -936,11 +936,25 @@ async function upsertProduct(
     } catch { /* ignore */ }
   }
 
-  // Ensure Default Shipping Profile link (Critical for Checkout completion)
+  // Ensure Shipping Profile link (Critical for Checkout completion)
+  // Must match the profile actually used by LIVE shipping options, not just any
+  // profile flagged type='default' - checkout validation compares the two directly.
   try {
-    const spRes = await pg.raw(`SELECT id FROM shipping_profile WHERE type = 'default' AND deleted_at IS NULL LIMIT 1`)
-    if (spRes.rows?.length > 0) {
-      const spId = spRes.rows[0].id
+    const spRes = await pg.raw(`
+      SELECT sp.id
+      FROM shipping_profile sp
+      JOIN shipping_option so ON so.shipping_profile_id = sp.id AND so.deleted_at IS NULL
+      WHERE sp.deleted_at IS NULL
+      GROUP BY sp.id
+      ORDER BY COUNT(so.id) DESC
+      LIMIT 1
+    `)
+    const fallback = spRes.rows?.length
+      ? null
+      : await pg.raw(`SELECT id FROM shipping_profile WHERE type = 'default' AND deleted_at IS NULL LIMIT 1`)
+    const rows = spRes.rows?.length ? spRes.rows : fallback?.rows
+    if (rows?.length > 0) {
+      const spId = rows[0].id
       await pg.raw(
         `INSERT INTO product_shipping_profile (id, product_id, shipping_profile_id, created_at, updated_at)
          VALUES (?, ?, ?, NOW(), NOW())
