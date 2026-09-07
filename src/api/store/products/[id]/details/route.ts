@@ -66,6 +66,27 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       [currency, currency, productId]
     )
 
+    // Fetch variant options to link variants with specific option values (e.g. Color=Black)
+    const variantOptionsResult = await pgConnection.raw(
+      `SELECT pvo.variant_id, po.title as option_name, pov.value as option_value
+       FROM product_variant_option pvo
+       JOIN product_option_value pov ON pov.id = pvo.option_value_id
+       JOIN product_option po ON po.id = pov.option_id
+       WHERE po.product_id = ?`,
+      [productId]
+    )
+    
+    const variantOptionsMap: Record<string, any[]> = {}
+    for (const row of variantOptionsResult.rows) {
+      if (!variantOptionsMap[row.variant_id]) {
+        variantOptionsMap[row.variant_id] = []
+      }
+      variantOptionsMap[row.variant_id].push({
+        name: row.option_name,
+        value: row.option_value
+      })
+    }
+
     // 4. Product options & option values
     const optionsResult = await pgConnection.raw(
       `SELECT po.id as option_id, po.title as option_name,
@@ -296,6 +317,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         inventory_quantity: null, // Will be populated from stock
         allow_backorder: v.allow_backorder,
         weight: v.weight,
+        options: variantOptionsMap[v.id] || [],
         metadata: vMeta,
       }
     })
