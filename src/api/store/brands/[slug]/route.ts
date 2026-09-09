@@ -97,9 +97,9 @@ export async function GET(
       // A value like 4.5 is KWD major → needs * 1000 → 4500 fils
       // A value like 4500 is already fils
       priceAmountFils = raw < 100 ? Math.round(raw * 1000) : Math.round(raw)
-    } else if (meta.marka_price || meta.list_price) {
+    } else if (meta.list_price || meta.marka_price) {
       // 2. Fallback to product-level metadata 
-      priceAmountFils = Math.round(parseFloat(meta.marka_price || meta.list_price) * 1000)
+      priceAmountFils = Math.round(parseFloat(meta.list_price || meta.marka_price) * 1000)
     }
 
     return {

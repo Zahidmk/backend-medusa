@@ -930,7 +930,7 @@ class OdooSyncService {
         cost_price: product.standard_price || 0,
         compare_price: product.compare_list_price || 0,
         marka_price: product.marka_price || 0,
-        ecommerce_price: product.marka_price || null,
+        ecommerce_price: product.list_price || product.marka_price || null,
         currency: product.currency_id ? product.currency_id[1] : null,
 
         // ── Descriptions ──
@@ -1025,8 +1025,8 @@ class OdooSyncService {
           weight: product.weight || 0,
           metadata: {
             odoo_product_id: product.id,
-            odoo_price: product.marka_price || 0,
-            odoo_price_amount: Math.round((product.marka_price || 0) * 1000),
+            odoo_price: product.list_price || product.marka_price || 0,
+            odoo_price_amount: Math.round((product.list_price || product.marka_price || 0) * 1000),
             odoo_currency: "kwd",
           },
         },

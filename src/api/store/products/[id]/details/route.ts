@@ -187,7 +187,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         const pMeta = typeof p.metadata === "string" ? JSON.parse(p.metadata) : (p.metadata || {})
         let price = p.price != null ? parseFloat(p.price) : null
         if (price == null || isNaN(price)) {
-          const rawOdooPrice = pMeta.marka_price ?? pMeta.list_price ?? pMeta.price
+          const rawOdooPrice = pMeta.list_price ?? pMeta.marka_price ?? pMeta.price
           if (rawOdooPrice != null && !isNaN(parseFloat(rawOdooPrice))) {
             const num = parseFloat(rawOdooPrice)
             price = num < 500 ? Math.round(num * 1000) : Math.round(num)
@@ -294,7 +294,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       if (price == null || isNaN(price)) {
         const rawOdooPrice = vMeta.odoo_price_amount != null
           ? parseFloat(vMeta.odoo_price_amount) / 1000
-          : (vMeta.odoo_price ?? vMeta.list_price ?? vMeta.price ?? metadata.marka_price ?? metadata.list_price ?? metadata.price)
+          : (vMeta.list_price ?? vMeta.odoo_price ?? vMeta.price ?? metadata.list_price ?? metadata.marka_price ?? metadata.price)
 
         if (rawOdooPrice != null && !isNaN(parseFloat(rawOdooPrice))) {
           const numPrice = parseFloat(rawOdooPrice)
@@ -325,8 +325,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     // Determine top-level product price from first variant or metadata
     const firstVariant = variants[0]
     let mainPrice = firstVariant?.price ?? null
-    if (mainPrice == null && (metadata.marka_price || metadata.list_price || metadata.price)) {
-      const rawPrice = parseFloat(metadata.marka_price || metadata.list_price || metadata.price)
+    if (mainPrice == null && (metadata.list_price || metadata.marka_price || metadata.price)) {
+      const rawPrice = parseFloat(metadata.list_price || metadata.marka_price || metadata.price)
       if (!isNaN(rawPrice)) {
         mainPrice = rawPrice < 500 ? Math.round(rawPrice * 1000) : Math.round(rawPrice)
       }

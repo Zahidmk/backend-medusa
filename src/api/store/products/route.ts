@@ -241,7 +241,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         if (priceAmt == null || isNaN(priceAmt)) {
           const rawPrice = vMeta.odoo_price_amount != null
             ? parseFloat(vMeta.odoo_price_amount) / 1000
-            : (vMeta.odoo_price ?? vMeta.list_price ?? vMeta.price ?? pMeta.marka_price ?? pMeta.list_price ?? pMeta.price)
+            : (vMeta.list_price ?? vMeta.odoo_price ?? vMeta.price ?? pMeta.list_price ?? pMeta.marka_price ?? pMeta.price)
           if (rawPrice != null && !isNaN(parseFloat(rawPrice))) {
             const num = parseFloat(rawPrice)
             priceAmt = num < 500 ? Math.round(num * 1000) : Math.round(num)

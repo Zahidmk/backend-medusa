@@ -204,8 +204,8 @@ export default async function odooSyncJob(containerOrObj: any) {
         }
 
         // Sync prices via Pricing module
-        // Priority: marka_price > list_price (ERP default)
-        const price = odooProduct.marka_price || odooProduct.list_price || (odooProduct as any).lst_price || 0;
+        // Priority: list_price > marka_price
+        const price = odooProduct.list_price || (odooProduct as any).lst_price || odooProduct.marka_price || 0;
         const currency = "kwd";
 
         if (price > 0) {

@@ -74,7 +74,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       if (priceAmt == null || isNaN(priceAmt)) {
         const rawOdooPrice = vMeta.odoo_price_amount != null
           ? parseFloat(vMeta.odoo_price_amount) / 1000
-          : (vMeta.odoo_price ?? vMeta.list_price ?? vMeta.price ?? metadata.marka_price ?? metadata.list_price ?? metadata.price)
+          : (vMeta.list_price ?? vMeta.odoo_price ?? vMeta.price ?? metadata.list_price ?? metadata.marka_price ?? metadata.price)
 
         if (rawOdooPrice != null && !isNaN(parseFloat(rawOdooPrice))) {
           const numPrice = parseFloat(rawOdooPrice)
@@ -103,8 +103,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     const firstVariant = variants[0]
     let mainPrice = firstVariant?.price ?? null
-    if (mainPrice == null && (metadata.marka_price || metadata.list_price || metadata.price)) {
-      const rawPrice = parseFloat(metadata.marka_price || metadata.list_price || metadata.price)
+    if (mainPrice == null && (metadata.list_price || metadata.marka_price || metadata.price)) {
+      const rawPrice = parseFloat(metadata.list_price || metadata.marka_price || metadata.price)
       if (!isNaN(rawPrice)) {
         mainPrice = rawPrice < 500 ? Math.round(rawPrice * 1000) : Math.round(rawPrice)
       }

@@ -385,7 +385,7 @@ async function syncProductVariantsAndOptions(
       {
         variant_id: p.odoo_id,
         sku: p.default_code || templateSku,
-        price: p.marka_price || p.list_price || 0,
+        price: p.list_price || p.lst_price || p.marka_price || 0,
         barcode: p.barcode || "",
         free_qty: p.free_qty || 0,
         oskar_expo_template_id: p.oskar_expo_template_id || false,
@@ -531,7 +531,7 @@ async function syncProductVariantsAndOptions(
       ? rawBarcode.replace(/^\(.*?\):\s*/i, "").trim() || rawBarcode
       : null
 
-    const varPriceRaw = v.price ?? v.marka_price ?? v.lst_price ?? p.marka_price ?? p.list_price ?? 0
+    const varPriceRaw = v.price ?? v.list_price ?? v.lst_price ?? v.marka_price ?? p.list_price ?? p.lst_price ?? p.marka_price ?? 0
     const varPrice = Math.round(varPriceRaw * KWD_FILS_DIVISOR)
     const varQty = v.free_qty ?? 0
     const varExpoTemplateId = v.oskar_expo_template_id || false
@@ -772,7 +772,7 @@ async function upsertProduct(
   const sku = p.default_code || `ODOO-${odooId}`
   const title = p.name || `Odoo Product ${odooId}`
   const KWD_FILS_DIVISOR = 1000
-  const rawPrice = p.marka_price || 0
+  const rawPrice = p.list_price || p.lst_price || p.marka_price || 0
   const price = Math.round(rawPrice * KWD_FILS_DIVISOR)
   const description = p.description_sale || p.description || ""
   const weight = p.weight ? String(p.weight) : null
@@ -858,6 +858,7 @@ async function upsertProduct(
     retail_price: p.retail_price || 0,
     compare_price: p.compare_list_price || 0,
     marka_price: p.marka_price || 0,
+    ecommerce_price: p.list_price || p.lst_price || p.marka_price || 0,
     brand: brand,
     brand_logo_url: brandLogoUrl,
     title_ar: p.arabic_name || null,
