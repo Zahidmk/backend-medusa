@@ -231,12 +231,12 @@ export default async function setupStore({ container }: ExecArgs) {
       console.log(`  ⚠️ Publishable Key setup skipped/failed: ${e.message}`)
     }
 
-    // 8. Enforce No Backorders globally
-    console.log("\n8️⃣ Enforcing No Backorders...")
+    // 8. Enforce Backorders globally (so items with 0 stock can still be added to cart)
+    console.log("\n8️⃣ Enforcing Backorders...")
     const pg = container.resolve(ContainerRegistrationKeys.PG_CONNECTION)
     try {
-      const res = await pg.raw(`UPDATE product_variant SET allow_backorder = false WHERE allow_backorder = true RETURNING id`)
-      console.log(`  ✅ Disabled backorders for ${res.rows?.length || 0} existing variants`)
+      const res = await pg.raw(`UPDATE product_variant SET allow_backorder = true WHERE allow_backorder = false RETURNING id`)
+      console.log(`  ✅ Enabled backorders for ${res.rows?.length || 0} existing variants`)
     } catch (e: any) {
       console.log(`  ⚠️ Failed to enforce backorder rule: ${e.message}`)
     }
