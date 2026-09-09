@@ -1020,7 +1020,7 @@ class OdooSyncService {
           sku: (product.default_code as string) || `ODOO-${product.id}`,
           barcode: (product.barcode as string) || undefined,
           manage_inventory: product.is_storable || false,
-          allow_backorder: false, // Disabled backorders to prevent selling out of stock items
+          allow_backorder: true, // Enabled backorders so items can be added to cart
           inventory_quantity: Math.floor(product.qty_available || 0),
           weight: product.weight || 0,
           metadata: {
