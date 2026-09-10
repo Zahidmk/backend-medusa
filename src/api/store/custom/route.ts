@@ -45,15 +45,6 @@ export async function GET(
 
   const options = [
     {
-      key: "night",
-      id: nightId,
-      label: "Night Delivery",
-      label_ar: "توصيل ليلي",
-      price: nightPrice,
-      estimated_days: "Same night",
-      estimated_days_ar: "نفس الليلة",
-    },
-    {
       key: "normal",
       id: normalId,
       label: "Normal Delivery",
@@ -61,6 +52,15 @@ export async function GET(
       price: normalPrice,
       estimated_days: "3-5 days",
       estimated_days_ar: "٣-٥ أيام",
+    },
+    {
+      key: "night",
+      id: nightId,
+      label: "Night Delivery",
+      label_ar: "توصيل ليلي",
+      price: nightPrice,
+      estimated_days: "Same night",
+      estimated_days_ar: "نفس الليلة",
     },
   ];
 
