@@ -8,14 +8,14 @@
 import {
   MedusaContainer,
 } from "@medusajs/framework/types";
-import { Modules } from "@medusajs/framework/utils";
+import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
 import { ODOO_CONFIG } from "../config/odoo";
 
 export default async function odooSyncJob(containerOrObj: any) {
   const container: MedusaContainer = containerOrObj?.resolve ? containerOrObj : containerOrObj?.container;
   if (!container) return;
   const logger = container.resolve("logger" as any);
-  const pgConnection = container.resolve("pgConnection" as any);
+  const pgConnection = container.resolve(ContainerRegistrationKeys.PG_CONNECTION);
   const productService = container.resolve(Modules.PRODUCT);
   const pricingService = container.resolve(Modules.PRICING);
   const remoteLink = container.resolve("remoteLink" as any);
