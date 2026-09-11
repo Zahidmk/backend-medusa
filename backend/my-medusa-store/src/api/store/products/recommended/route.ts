@@ -109,6 +109,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const productMap: Record<string, any> = {}
     for (const row of productsResult.rows) {
       if (!productMap[row.id]) {
+        const meta = typeof row.metadata === "string" ? JSON.parse(row.metadata) : (row.metadata || {})
         productMap[row.id] = {
           id:          row.id,
           title:       row.title,
@@ -119,6 +120,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           metadata:    row.metadata,
           created_at:  row.created_at,
           total_sold:  salesMap[row.id] || 0,
+          in_stock:    (meta.odoo_qty || meta.stock_qty || 0) > 0,
           variants:    [],
         }
       }
