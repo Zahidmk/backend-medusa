@@ -120,7 +120,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           metadata:    row.metadata,
           created_at:  row.created_at,
           total_sold:  salesMap[row.id] || 0,
-          in_stock:    (meta.odoo_qty || meta.stock_qty || 0) > 0,
+          in_stock:    (meta.odoo_stock || meta.odoo_qty || meta.stock_qty || 0) > 0,
           variants:    [],
         }
       }

@@ -124,12 +124,16 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           }
         }
 
-        return products.map((p: any) => ({
-          ...p,
-          thumbnail: makeAbsolute(p.thumbnail),
-          images: imagesByProduct[p.id] || [],
-          variants: variantsByProduct[p.id] || [],
-        }))
+        return products.map((p: any) => {
+          const meta = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : (p.metadata || {})
+          return {
+            ...p,
+            thumbnail: makeAbsolute(p.thumbnail),
+            images: imagesByProduct[p.id] || [],
+            variants: variantsByProduct[p.id] || [],
+            in_stock: (meta.odoo_stock || meta.odoo_qty || meta.stock_qty || 0) > 0,
+          }
+        })
       }
 
       return products
@@ -242,12 +246,16 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         }
       }
 
-      recommendedFinal = recommendedFinal.map((p: any) => ({
-        ...p,
-        thumbnail: makeAbsolute(p.thumbnail),
-        images: imagesByProduct[p.id] || [],
-        variants: variantsByProduct[p.id] || [],
-      }))
+      recommendedFinal = recommendedFinal.map((p: any) => {
+        const meta = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : (p.metadata || {})
+        return {
+          ...p,
+          thumbnail: makeAbsolute(p.thumbnail),
+          images: imagesByProduct[p.id] || [],
+          variants: variantsByProduct[p.id] || [],
+          in_stock: (meta.odoo_stock || meta.odoo_qty || meta.stock_qty || 0) > 0,
+        }
+      })
     }
 
     // ── Build response ───────────────────────────────────────

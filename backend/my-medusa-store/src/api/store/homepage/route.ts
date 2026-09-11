@@ -131,7 +131,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
             thumbnail: makeAbsolute(p.thumbnail),
             images: imagesByProduct[p.id] || [],
             variants: variantsByProduct[p.id] || [],
-            in_stock: (meta.odoo_qty || meta.stock_qty || 0) > 0,
+            in_stock: (meta.odoo_stock || meta.odoo_qty || meta.stock_qty || 0) > 0,
           }
         })
       }
@@ -242,7 +242,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           thumbnail: makeAbsolute(p.thumbnail),
           images: imagesByProduct[p.id] || [],
           variants: variantsByProduct[p.id] || [],
-          in_stock: (meta.odoo_qty || meta.stock_qty || 0) > 0,
+          in_stock: (meta.odoo_stock || meta.odoo_qty || meta.stock_qty || 0) > 0,
         }
       })
     }
