@@ -24,7 +24,7 @@ export default async function fixDeliveryOptionPrices({ container }: ExecArgs) {
 
   const fulfillmentModuleService = container.resolve("fulfillment")
   const pricingService = container.resolve("pricing")
-  const query = container.resolve("query")
+  const pgConnection = container.resolve("pgConnection")
 
   const shippingOptions = await fulfillmentModuleService.listShippingOptions({
     name: Object.keys(TARGET_PRICES),
@@ -34,13 +34,11 @@ export default async function fixDeliveryOptionPrices({ container }: ExecArgs) {
     const targetAmount = TARGET_PRICES[option.name]
     console.log(`\nProcessing: ${option.name} (${option.id}) -> target amount ${targetAmount}`)
 
-    const { data } = await query.graph({
-      entity: "shipping_option",
-      fields: ["id", "name", "price.*"],
-      filters: { id: option.id },
-    })
-
-    const priceSetId = (data?.[0] as any)?.price?.[0]?.price_set_id
+    const linkRow = await pgConnection.raw(
+      `SELECT price_set_id FROM shipping_option_price_set WHERE shipping_option_id = ? LIMIT 1`,
+      [option.id]
+    )
+    const priceSetId = linkRow.rows?.[0]?.price_set_id
     if (!priceSetId) {
       console.log("  ⚠️ Could not resolve price_set_id, skipping")
       continue
