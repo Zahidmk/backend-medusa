@@ -1,4 +1,5 @@
 import { ExecArgs } from "@medusajs/framework/types"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 
 /**
  * Fix missing KWD prices on the "Normal Delivery" and "Night Delivery"
@@ -24,7 +25,7 @@ export default async function fixDeliveryOptionPrices({ container }: ExecArgs) {
 
   const fulfillmentModuleService = container.resolve("fulfillment")
   const pricingService = container.resolve("pricing")
-  const pgConnection = container.resolve("pgConnection") as any
+  const pgConnection = container.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
 
   const shippingOptions = await fulfillmentModuleService.listShippingOptions({
     name: Object.keys(TARGET_PRICES),
