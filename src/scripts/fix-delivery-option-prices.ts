@@ -1,5 +1,6 @@
 import { ExecArgs } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import { generateEntityId } from "@medusajs/utils"
 
 /**
  * Fix missing KWD prices on the "Normal Delivery" and "Night Delivery"
@@ -26,7 +27,6 @@ export default async function fixDeliveryOptionPrices({ container }: ExecArgs) {
 
   const fulfillmentModuleService = container.resolve("fulfillment")
   const pricingService = container.resolve("pricing")
-  const linkService = container.resolve("link")
   const pgConnection = container.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
 
   const shippingOptions = await fulfillmentModuleService.listShippingOptions({
@@ -79,12 +79,12 @@ export default async function fixDeliveryOptionPrices({ container }: ExecArgs) {
       )
     }
 
-    await linkService.create({
-      shipping_option_price_set: {
-        shipping_option_id: option.id,
-        price_set_id: priceSet.id,
-      },
-    })
+    const linkId = generateEntityId(undefined, "sops")
+    await pgConnection.raw(
+      `INSERT INTO shipping_option_price_set (id, shipping_option_id, price_set_id, created_at, updated_at)
+       VALUES (?, ?, ?, now(), now())`,
+      [linkId, option.id, priceSet.id]
+    )
     console.log(`  ✅ Linked new price_set to ${option.name}`)
   }
 
