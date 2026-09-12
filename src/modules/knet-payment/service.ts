@@ -47,9 +47,17 @@ export default class KnetPaymentProviderService extends AbstractPaymentProvider<
       // Use the verified production backend URL for the callback
       const frontendBase = process.env.PUBLIC_BACKEND_URL || "https://admin.markasouq.com";
       
-      // Medusa v2 already provides amounts as real decimal currency values
-      // (e.g. 2.002 KWD), not legacy minor units — pass through as-is.
-      const finalAmount = amount;
+      // This store's amounts are stored in thousandths (e.g. amount 2002 = KWD 2.002),
+      // confirmed by the Odoo price-sync pipeline and existing order/payment records.
+      let finalAmount = amount;
+      const currencyLower = currency.toLowerCase();
+      if (['kwd', 'bhd', 'omr'].includes(currencyLower)) {
+        finalAmount = amount / 1000;
+      } else if (['jpy'].includes(currencyLower)) {
+        finalAmount = amount;
+      } else {
+        finalAmount = amount / 100;
+      }
       
       let cartId = input?.data?.cart_id || input?.data?.cartId || input?.cart_id || input?.context?.cart_id || input?.context?.cart?.id || "";
 
