@@ -24,7 +24,7 @@ export default async function fixDeliveryOptionPrices({ container }: ExecArgs) {
 
   const fulfillmentModuleService = container.resolve("fulfillment")
   const pricingService = container.resolve("pricing")
-  const pgConnection = container.resolve("pgConnection")
+  const pgConnection = container.resolve("pgConnection") as any
 
   const shippingOptions = await fulfillmentModuleService.listShippingOptions({
     name: Object.keys(TARGET_PRICES),
