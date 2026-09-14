@@ -8,7 +8,7 @@
  * this page doesn't duplicate any sync logic.
  */
 
-import { useEffect, useState } from "react"
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
 import { Button, Heading, Text } from "@medusajs/ui"
 import { ArrowPathMini, CheckCircle, ExclamationCircle, ArrowPath } from "@medusajs/icons"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
@@ -78,7 +78,11 @@ function formatDate(iso: string | null | undefined) {
   return new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })
 }
 
-function SyncCard({ card }: { card: SyncCardConfig }) {
+export interface SyncCardHandle {
+  runSync: () => Promise<SyncResult>
+}
+
+const SyncCard = forwardRef<SyncCardHandle, { card: SyncCardConfig }>(({ card }, ref) => {
   const [status, setStatus] = useState<any>(null)
   const [loadingStatus, setLoadingStatus] = useState(true)
   const [syncing, setSyncing] = useState(false)
@@ -102,7 +106,7 @@ function SyncCard({ card }: { card: SyncCardConfig }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleSync = async () => {
+  const handleSync = async (): Promise<SyncResult> => {
     setSyncing(true)
     setResult(null)
     try {
@@ -110,12 +114,17 @@ function SyncCard({ card }: { card: SyncCardConfig }) {
       const data: any = await res.json()
       setResult(data)
       if (data.success) await fetchStatus()
+      return data
     } catch (e: any) {
-      setResult({ success: false, error: e.message })
+      const failure = { success: false, error: e.message }
+      setResult(failure)
+      return failure
     } finally {
       setSyncing(false)
     }
   }
+
+  useImperativeHandle(ref, () => ({ runSync: handleSync }))
 
   const statusRows = formatStatusSafe(card, status)
 
@@ -174,7 +183,8 @@ function SyncCard({ card }: { card: SyncCardConfig }) {
       )}
     </div>
   )
-}
+})
+SyncCard.displayName = "SyncCard"
 
 function formatStatusSafe(card: SyncCardConfig, status: any) {
   try {
@@ -185,21 +195,52 @@ function formatStatusSafe(card: SyncCardConfig, status: any) {
 }
 
 export default function OdooSyncDashboardPage() {
+  const [syncingAll, setSyncingAll] = useState(false)
+  const [allSummary, setAllSummary] = useState<string | null>(null)
+  const cardRefs = useRef<Record<string, SyncCardHandle | null>>({})
+
+  const handleSyncAll = async () => {
+    setSyncingAll(true)
+    setAllSummary(null)
+    const outcomes: string[] = []
+    // Run one at a time (not in parallel) so a slow/heavy sync — Products can
+    // take a few minutes over the full catalog — doesn't pile database load
+    // on top of the others at once.
+    for (const card of CARDS) {
+      const handle = cardRefs.current[card.key]
+      if (!handle) continue
+      const res = await handle.runSync()
+      outcomes.push(`${card.title}: ${res.success ? "✓" : "✗ " + (res.error || "failed")}`)
+    }
+    setAllSummary(outcomes.join("  •  "))
+    setSyncingAll(false)
+  }
+
   return (
     <div className="flex flex-col gap-4 p-6">
-      <div>
-        <Heading level="h1" className="flex items-center gap-2">
-          <ArrowPath /> Odoo Sync
-        </Heading>
-        <Text className="text-ui-fg-subtle mt-1">
-          Manually trigger a sync for each data type. Most of these also run automatically in the background —
-          use these buttons when you need the latest data from Odoo right now.
-        </Text>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <Heading level="h1" className="flex items-center gap-2">
+            <ArrowPath /> Odoo Sync
+          </Heading>
+          <Text className="text-ui-fg-subtle mt-1">
+            Manually trigger a sync for each data type. Most of these also run automatically in the background —
+            use these buttons when you need the latest data from Odoo right now.
+          </Text>
+        </div>
+        <Button variant="primary" size="base" isLoading={syncingAll} disabled={syncingAll} onClick={handleSyncAll}>
+          <ArrowPathMini className="mr-2" />
+          {syncingAll ? "Syncing All..." : "Sync All"}
+        </Button>
       </div>
+
+      {allSummary && (
+        <Text className="text-ui-fg-subtle text-sm">{allSummary}</Text>
+      )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {CARDS.map((card) => (
-          <SyncCard key={card.key} card={card} />
+          <SyncCard key={card.key} card={card} ref={(el) => { cardRefs.current[card.key] = el }} />
         ))}
       </div>
     </div>
