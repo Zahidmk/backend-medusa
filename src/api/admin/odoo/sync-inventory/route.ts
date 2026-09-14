@@ -55,7 +55,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     for (const p of stock) {
       const sku = p.default_code
       if (!sku || typeof sku !== "string") continue
-      const qty = Math.max(0, Math.floor(p.free_qty ?? p.qty_available ?? 0))
+      // free_qty (available to promise, after reservations) is frequently 0
+      // even when real stock exists — qty_available (physical on-hand) is
+      // the meaningful number in that case, so fall through on a falsy 0 too.
+      const qty = Math.max(0, Math.floor(p.free_qty || p.qty_available || 0))
       entries.push([sku, qty])
     }
 
