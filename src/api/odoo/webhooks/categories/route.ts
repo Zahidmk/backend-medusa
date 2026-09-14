@@ -26,6 +26,19 @@ const WEBHOOK_SECRET = process.env.ODOO_WEBHOOK_SECRET || "marqa-odoo-webhook-20
 const CATEGORIES_UPLOAD_DIR = path.join(process.cwd(), "static", "uploads", "categories")
 const CATEGORIES_URL_PREFIX = "/static/uploads/categories"
 
+// Category names to exclude from syncing to the website — kept in sync with
+// odoo-category-sync-job.ts and admin/odoo/sync-categories so a category
+// filtered out by the scheduled job doesn't get reintroduced by a webhook ping.
+const EXCLUDED_CATEGORY_PATTERNS = [
+  'expo', 'wholesale', 'previous', 'test category', 'demo', 'archive',
+  'old category', 'deprecated', 'draft'
+]
+
+function isExcludedCategory(name: string): boolean {
+  const n = (name || '').toLowerCase().trim()
+  return EXCLUDED_CATEGORY_PATTERNS.some((pattern) => n.includes(pattern))
+}
+
 function slugify(text: string): string {
   return text
     .toLowerCase()
@@ -127,8 +140,28 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
         return
       }
 
-      const odooCategories = await odoo.fetchPublicCategories()
+      const allOdooCategories = await odoo.fetchPublicCategories()
+      const odooCategories = allOdooCategories.filter((c: any) => !isExcludedCategory(c.name))
       const result = await syncCategories(odooCategories, pgConnection, productService)
+
+      // Soft-delete categories that are no longer synced from Odoo (deleted,
+      // renamed into an excluded pattern like "test category", etc.)
+      let softDeletedCount = 0
+      try {
+        const medusaCategories = await pgConnection.raw(
+          `SELECT id, metadata->>'odoo_id' as odoo_id FROM product_category WHERE metadata->>'odoo_id' IS NOT NULL AND deleted_at IS NULL`
+        )
+        const syncedOdooIds = new Set(odooCategories.map((c: any) => String(c.id)))
+        for (const row of medusaCategories.rows) {
+          if (!syncedOdooIds.has(row.odoo_id)) {
+            await pgConnection.raw(
+              `UPDATE product_category SET deleted_at = NOW(), updated_at = NOW() WHERE id = ?`,
+              [row.id]
+            )
+            softDeletedCount++
+          }
+        }
+      } catch { /* ignore cleanup errors */ }
 
       // Record last sync time
       await recordSyncTime(pgConnection)
@@ -137,6 +170,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
         success: true,
         action: "full_sync",
         ...result,
+        soft_deleted: softDeletedCount,
         elapsed_ms: Date.now() - startTime,
       })
       return
@@ -172,6 +206,23 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     //  MODE 3: Single category create/update
     // ══════════════════════════════════════
     if (body?.category) {
+      if (isExcludedCategory(body.category.name)) {
+        const odooId = body.category.id || body.category.odoo_id
+        const deleteResult = await pgConnection.raw(
+          `UPDATE product_category SET deleted_at = NOW(), updated_at = NOW()
+           WHERE metadata->>'odoo_id' = ? AND deleted_at IS NULL`,
+          [String(odooId)]
+        )
+        res.json({
+          success: true,
+          action: "excluded",
+          category: body.category.name,
+          deleted: deleteResult.rowCount || 0,
+          elapsed_ms: Date.now() - startTime,
+        })
+        return
+      }
+
       const result = await upsertSingleCategory(body.category, pgConnection, productService)
       await recordSyncTime(pgConnection)
 
@@ -188,7 +239,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     //  MODE 4: Bulk categories
     // ══════════════════════════════════════
     if (Array.isArray(body?.categories)) {
-      const result = await syncCategories(body.categories, pgConnection, productService)
+      const filtered = body.categories.filter((c: any) => !isExcludedCategory(c.name))
+      const result = await syncCategories(filtered, pgConnection, productService)
       await recordSyncTime(pgConnection)
 
       res.json({
