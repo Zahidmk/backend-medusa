@@ -311,10 +311,18 @@ async function syncCategories(
   let errors = 0
   const errorDetails: string[] = []
 
-  const odooIdToHandle = new Map<number, string>()
+  // Odoo category names are not unique across different parents (two
+  // "Cleaning" categories can exist under different branches), so parents
+  // must always be resolved by odoo_id, never by re-slugifying the parent's
+  // display name. Categories also nest more than one level deep, so process
+  // them in parent-before-child (depth) order rather than a flat root/child split.
+  const odooIdToMedusaId = new Map<number, string>()
 
-  const rootCategories = odooCategories.filter((c: any) => !c.parent_id)
-  const childCategories = odooCategories.filter((c: any) => !!c.parent_id)
+  const sorted = [...odooCategories].sort((a: any, b: any) => {
+    const depthA = (a.parent_path || "").split("/").filter(Boolean).length
+    const depthB = (b.parent_path || "").split("/").filter(Boolean).length
+    return depthA - depthB
+  })
 
   const processCategory = async (oCategory: any, parentMedusaId: string | null) => {
     try {
@@ -328,7 +336,6 @@ async function syncCategories(
       const handle = existing.rows.length > 0
         ? existing.rows[0].handle
         : await getUniqueHandle(pg, baseHandle, oCategory.id)
-      odooIdToHandle.set(oCategory.id, handle)
 
       let imageUrl: string | null = null
       if (oCategory.image_1920 && typeof oCategory.image_1920 === "string") {
@@ -337,54 +344,47 @@ async function syncCategories(
       }
 
       const metadata = { image_url: imageUrl, odoo_id: oCategory.id }
+      let medusaId: string
 
       if (existing.rows.length > 0) {
+        medusaId = existing.rows[0].id
         await pg.raw(
           `UPDATE product_category
            SET name = ?, parent_category_id = ?,
                metadata = COALESCE(metadata, '{}')::jsonb || ?::jsonb,
                deleted_at = NULL, updated_at = NOW()
            WHERE id = ?`,
-          [oCategory.name, parentMedusaId, JSON.stringify(metadata), existing.rows[0].id]
+          [oCategory.name, parentMedusaId, JSON.stringify(metadata), medusaId]
         )
         updated++
       } else {
-        await productService.createProductCategories({
+        const createdCategory = await productService.createProductCategories({
           name: oCategory.name,
           handle,
           parent_category_id: parentMedusaId,
           is_active: true,
           metadata,
         })
+        medusaId = createdCategory.id
         created++
       }
+      odooIdToMedusaId.set(oCategory.id, medusaId)
     } catch (err: any) {
       errors++
       errorDetails.push(`"${oCategory.name}": ${err.message}`)
     }
   }
 
-  // Process root first, then children
-  for (const cat of rootCategories) {
-    await processCategory(cat, null)
-  }
-
-  for (const cat of childCategories) {
+  for (const cat of sorted) {
     const parentOdooId = Array.isArray(cat.parent_id) ? cat.parent_id[0] : null
-    const parentHandle = parentOdooId ? odooIdToHandle.get(parentOdooId) : null
 
-    let parentMedusaId: string | null = null
-    if (parentHandle) {
-      let actualParentName = cat.parent_id[1];
-      if (actualParentName && actualParentName.includes('/')) {
-        const parts = actualParentName.split('/');
-        actualParentName = parts[parts.length - 1].trim();
-      }
-      const actualParentHandle = actualParentName ? slugify(actualParentName) : parentHandle;
+    let parentMedusaId: string | null = parentOdooId ? (odooIdToMedusaId.get(parentOdooId) || null) : null
 
+    // Fallback: parent wasn't in this same batch (or was skipped) — look it up directly
+    if (!parentMedusaId && parentOdooId) {
       const parentRow = await pg.raw(
-        `SELECT id FROM product_category WHERE handle = ? AND deleted_at IS NULL LIMIT 1`,
-        [actualParentHandle]
+        `SELECT id FROM product_category WHERE metadata->>'odoo_id' = ? AND deleted_at IS NULL LIMIT 1`,
+        [String(parentOdooId)]
       )
       parentMedusaId = parentRow.rows[0]?.id || null
     }
