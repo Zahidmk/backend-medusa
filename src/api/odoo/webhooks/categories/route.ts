@@ -35,6 +35,24 @@ function slugify(text: string): string {
     .substring(0, 100)
 }
 
+// Odoo category names are not unique across different parents (e.g. two
+// "Cleaning" categories can exist under different branches), so a category
+// must always be identified by its odoo_id, never by its slugified handle.
+// If two categories slugify to the same handle, disambiguate with a suffix.
+async function getUniqueHandle(pg: any, baseHandle: string, odooId: number | string): Promise<string> {
+  let handle = baseHandle
+  let suffix = 2
+  while (true) {
+    const row = await pg.raw(
+      `SELECT metadata->>'odoo_id' as odoo_id FROM product_category WHERE handle = ? LIMIT 1`,
+      [handle]
+    )
+    if (row.rows.length === 0 || row.rows[0].odoo_id === String(odooId)) return handle
+    handle = `${baseHandle}-${suffix}`
+    suffix++
+  }
+}
+
 function saveBase64Image(base64Data: string | false, dir: string, filename: string): string | null {
   if (!base64Data || typeof base64Data !== "string") return null
   const buffer = Buffer.from(base64Data, "base64")
@@ -201,8 +219,18 @@ async function upsertSingleCategory(
   productService: any
 ): Promise<{ action: string; handle: string }> {
   const name = cat.name
-  const handle = slugify(name)
-  if (!handle) throw new Error("Category name is empty or produces empty slug")
+  const odooId = cat.id || cat.odoo_id
+  const baseHandle = slugify(name)
+  if (!baseHandle) throw new Error("Category name is empty or produces empty slug")
+
+  // Check if exists (by odoo_id, not handle — names collide across branches)
+  const existing = await pg.raw(
+    `SELECT id, handle FROM product_category WHERE metadata->>'odoo_id' = ? LIMIT 1`,
+    [String(odooId)]
+  )
+  const handle = existing.rows.length > 0
+    ? existing.rows[0].handle
+    : await getUniqueHandle(pg, baseHandle, odooId)
 
   // Save image if provided
   let imageUrl: string | null = null
@@ -211,7 +239,7 @@ async function upsertSingleCategory(
     if (filename) imageUrl = `${CATEGORIES_URL_PREFIX}/${filename}`
   }
 
-  const metadata: any = { odoo_id: cat.id || cat.odoo_id }
+  const metadata: any = { odoo_id: odooId }
   if (imageUrl) metadata.image_url = imageUrl
 
   // Resolve parent
@@ -244,12 +272,6 @@ async function upsertSingleCategory(
     parentMedusaId = parentRow.rows[0]?.id || null
   }
 
-  // Check if exists
-  const existing = await pg.raw(
-    `SELECT id FROM product_category WHERE handle = ? LIMIT 1`,
-    [handle]
-  )
-
   if (existing.rows.length > 0) {
     // Update
     await pg.raw(
@@ -259,8 +281,8 @@ async function upsertSingleCategory(
            metadata = COALESCE(metadata, '{}')::jsonb || ?::jsonb,
            deleted_at = NULL,
            updated_at = NOW()
-       WHERE handle = ?`,
-      [name, parentMedusaId, JSON.stringify(metadata), handle]
+       WHERE id = ?`,
+      [name, parentMedusaId, JSON.stringify(metadata), existing.rows[0].id]
     )
     return { action: "updated", handle }
   } else {
@@ -296,8 +318,16 @@ async function syncCategories(
 
   const processCategory = async (oCategory: any, parentMedusaId: string | null) => {
     try {
-      const handle = slugify(oCategory.name)
-      if (!handle) return
+      const baseHandle = slugify(oCategory.name)
+      if (!baseHandle) return
+
+      const existing = await pg.raw(
+        `SELECT id, handle FROM product_category WHERE metadata->>'odoo_id' = ? LIMIT 1`,
+        [String(oCategory.id)]
+      )
+      const handle = existing.rows.length > 0
+        ? existing.rows[0].handle
+        : await getUniqueHandle(pg, baseHandle, oCategory.id)
       odooIdToHandle.set(oCategory.id, handle)
 
       let imageUrl: string | null = null
@@ -308,19 +338,14 @@ async function syncCategories(
 
       const metadata = { image_url: imageUrl, odoo_id: oCategory.id }
 
-      const existing = await pg.raw(
-        `SELECT id FROM product_category WHERE handle = ? LIMIT 1`,
-        [handle]
-      )
-
       if (existing.rows.length > 0) {
         await pg.raw(
           `UPDATE product_category
            SET name = ?, parent_category_id = ?,
                metadata = COALESCE(metadata, '{}')::jsonb || ?::jsonb,
                deleted_at = NULL, updated_at = NOW()
-           WHERE handle = ?`,
-          [oCategory.name, parentMedusaId, JSON.stringify(metadata), handle]
+           WHERE id = ?`,
+          [oCategory.name, parentMedusaId, JSON.stringify(metadata), existing.rows[0].id]
         )
         updated++
       } else {

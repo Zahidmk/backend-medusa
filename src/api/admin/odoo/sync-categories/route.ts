@@ -140,10 +140,38 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
       return depthA - depthB
     })
 
+    // Odoo category names are not unique across different parents (e.g. two
+    // "Cleaning" categories can exist under different branches), so a category
+    // must always be identified by its odoo_id, never by its slugified handle.
+    // If two categories slugify to the same handle, disambiguate with a suffix.
+    const getUniqueHandle = async (baseHandle: string, odooId: number): Promise<string> => {
+      let handle = baseHandle
+      let suffix = 2
+      while (true) {
+        const row = await pgConnection.raw(
+          `SELECT metadata->>'odoo_id' as odoo_id FROM product_category WHERE handle = ? LIMIT 1`,
+          [handle]
+        )
+        if (row.rows.length === 0 || row.rows[0].odoo_id === String(odooId)) return handle
+        handle = `${baseHandle}-${suffix}`
+        suffix++
+      }
+    }
+
     const processCategory = async (oCategory: any, parentMedusaId: string | null) => {
       try {
-        const handle = slugify(oCategory.name)
-        if (!handle) return
+        const baseHandle = slugify(oCategory.name)
+        if (!baseHandle) return
+
+        // Check if already exists (by odoo_id, not handle — names collide across branches)
+        const existing = await pgConnection.raw(
+          `SELECT id, handle FROM product_category WHERE metadata->>'odoo_id' = ? LIMIT 1`,
+          [String(oCategory.id)]
+        )
+
+        const handle = existing.rows.length > 0
+          ? existing.rows[0].handle
+          : await getUniqueHandle(baseHandle, oCategory.id)
         odooIdToHandle.set(oCategory.id, handle)
 
         // Try to save image
@@ -160,12 +188,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
           odoo_id: oCategory.id,
         }
 
-        // Check if already exists (by handle)
-        const existing = await pgConnection.raw(
-          `SELECT id FROM product_category WHERE handle = ? LIMIT 1`,
-          [handle]
-        )
-
         if (existing.rows.length > 0) {
           // Update: restore if soft-deleted, update name/parent/image
           await pgConnection.raw(
@@ -175,8 +197,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
                  metadata = COALESCE(metadata, '{}')::jsonb || ?::jsonb,
                  deleted_at = NULL,
                  updated_at = NOW()
-             WHERE handle = ?`,
-            [oCategory.name, parentMedusaId, JSON.stringify(metadata), handle]
+             WHERE id = ?`,
+            [oCategory.name, parentMedusaId, JSON.stringify(metadata), existing.rows[0].id]
           )
           updated++
         } else {

@@ -84,32 +84,53 @@ export default async function odooCategorySyncJob(containerOrObj: any) {
       return depthA - depthB
     })
 
+    // Odoo category names are not unique across different parents (e.g. two
+    // "Cleaning" categories can exist under different branches), so a category
+    // must always be identified by its odoo_id, never by its slugified handle.
+    // If two categories slugify to the same handle, disambiguate with a suffix.
+    const getUniqueHandle = async (baseHandle: string, odooId: number): Promise<string> => {
+      let handle = baseHandle
+      let suffix = 2
+      while (true) {
+        const row = await pgConnection.raw(
+          `SELECT metadata->>'odoo_id' as odoo_id FROM product_category WHERE handle = ? LIMIT 1`,
+          [handle]
+        )
+        if (row.rows.length === 0 || row.rows[0].odoo_id === String(odooId)) return handle
+        handle = `${baseHandle}-${suffix}`
+        suffix++
+      }
+    }
+
     const processCategory = async (oCategory: any, parentMedusaId: string | null) => {
       try {
-        const handle = slugify(oCategory.name)
         const odooUrl = (process.env.ODOO_URL || "").replace(/\/$/, "")
         const imageUrl = `${odooUrl}/web/image/product.public.category/${oCategory.id}/image_1920`
-        const metadata = { 
+        const metadata = {
           odoo_id: oCategory.id,
           image_url: imageUrl,
         }
 
         const existing = await pgConnection.raw(
-          `SELECT id FROM product_category WHERE handle = ? LIMIT 1`,
-          [handle]
+          `SELECT id, handle FROM product_category WHERE metadata->>'odoo_id' = ? LIMIT 1`,
+          [String(oCategory.id)]
         )
 
         if (existing.rows.length > 0) {
+          const existingId = existing.rows[0].id
+          odooIdToHandle.set(oCategory.id, existing.rows[0].handle)
           await pgConnection.raw(
             `UPDATE product_category
              SET name = ?, parent_category_id = ?,
                  metadata = COALESCE(metadata, '{}')::jsonb || ?::jsonb,
                  deleted_at = NULL, updated_at = NOW()
-             WHERE handle = ?`,
-            [oCategory.name, parentMedusaId, JSON.stringify(metadata), handle]
+             WHERE id = ?`,
+            [oCategory.name, parentMedusaId, JSON.stringify(metadata), existingId]
           )
           updated++
         } else {
+          const handle = await getUniqueHandle(slugify(oCategory.name), oCategory.id)
+          odooIdToHandle.set(oCategory.id, handle)
           await productService.createProductCategories({
             name: oCategory.name,
             handle,
