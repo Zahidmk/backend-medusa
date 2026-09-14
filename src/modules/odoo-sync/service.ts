@@ -609,14 +609,19 @@ class OdooSyncService {
   async fetchBrands(): Promise<OdooBrand[]> {
     await this.ensureAuth()
     try {
+      // Only id/name are actually used by the sync logic — the brand logo
+      // is served from a separate custom API endpoint, not these image
+      // fields. Some of them (e.g. image_1024) don't exist on every Odoo
+      // instance's custom.product.brand model, and Odoo rejects the whole
+      // search_read if any requested field is invalid.
       const brands = await this.executeKw(
         "custom.product.brand",
         "search_read",
         [[]],
-        { 
-          fields: ["id", "name", "image_1920", "image_1024", "image_512", "image_256", "image_128", "logo"], 
-          limit: 500, 
-          context: { bin_size: false } 
+        {
+          fields: ["id", "name"],
+          limit: 500,
+          context: { bin_size: false }
         }
       )
       return brands as OdooBrand[]
