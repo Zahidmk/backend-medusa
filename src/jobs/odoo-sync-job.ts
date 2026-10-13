@@ -102,15 +102,11 @@ export default async function odooSyncJob(containerOrObj: any) {
         }
 
         // Check if product exists by odoo_id
-        const existing = await productService.listProducts(
-          {} as any,
-          { select: ["id", "metadata"], take: 5000 }
+        const existingRows = await pgConnection.raw(
+          `SELECT id FROM product WHERE metadata->>'odoo_id' = ? AND deleted_at IS NULL ORDER BY created_at LIMIT 1`,
+          [String(odooProduct.id)]
         );
-        const existingProduct = existing.find(
-          (p: any) =>
-            p.metadata?.odoo_id === odooProduct.id ||
-            p.metadata?.odoo_id === String(odooProduct.id)
-        );
+        const existingProduct = existingRows.rows?.[0];
 
         let medusaProductId: string;
 
@@ -256,5 +252,5 @@ async function updateLastSync(pgConnection: any, logger: any) {
 
 export const config = {
   name: "odoo-product-sync",
-  schedule: "0 3 * * *", // Daily at 3:00 AM (86,400,000 ms delay, safely fits within Node 32-bit signed int limit)
+  schedule: "*/5 * * * *", // Every 5 minutes (delta sync by write_date)
 };
