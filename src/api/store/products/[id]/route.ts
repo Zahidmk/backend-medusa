@@ -74,7 +74,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       if (priceAmt == null || isNaN(priceAmt)) {
         const rawOdooPrice = vMeta.odoo_price_amount != null
           ? parseFloat(vMeta.odoo_price_amount) / 1000
-          : (vMeta.list_price ?? vMeta.odoo_price ?? vMeta.price ?? metadata.list_price ?? metadata.marka_price ?? metadata.price)
+          : (vMeta.retail_price ?? vMeta.list_price ?? vMeta.odoo_price ?? vMeta.price ?? metadata.retail_price ?? metadata.list_price ?? metadata.marka_price ?? metadata.price)
 
         if (rawOdooPrice != null && !isNaN(parseFloat(rawOdooPrice))) {
           const numPrice = parseFloat(rawOdooPrice)

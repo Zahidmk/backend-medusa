@@ -47,7 +47,8 @@ export interface OdooProduct {
   color: number
 
   // ── Prices ──
-  list_price: number                    // Sales Price
+  retail_price: number                  // Retail Price (used for website)
+  list_price: number                    // Sales Price (not used)
   standard_price: number                // Cost
   compare_list_price: number            // Compare-to / Was price
 
@@ -293,7 +294,7 @@ export const ODOO_PRODUCT_TEMPLATE_FIELDS = [
   "sequence", "is_favorite", "color",
 
   // Prices
-  "list_price", "standard_price", "compare_list_price", "marka_price",
+  "retail_price", "list_price", "standard_price", "compare_list_price", "marka_price",
   "currency_id",
 
   // Descriptions
@@ -344,7 +345,7 @@ export const ODOO_PRODUCT_TEMPLATE_FIELDS = [
 /** Fields for product.product (variant-level) */
 export const ODOO_VARIANT_FIELDS = [
   "id", "display_name", "default_code", "barcode",
-  "list_price", "standard_price",
+  "retail_price", "list_price", "standard_price",
   "qty_available", "virtual_available",
   "weight", "volume",
   "image_1920",
@@ -934,8 +935,10 @@ class OdooSyncService {
         // ── Prices ──
         cost_price: product.standard_price || 0,
         compare_price: product.compare_list_price || 0,
+        retail_price: product.retail_price || 0,
+        list_price: product.retail_price || 0,
         marka_price: product.marka_price || 0,
-        ecommerce_price: product.list_price || product.marka_price || null,
+        ecommerce_price: product.retail_price || null,
         currency: product.currency_id ? product.currency_id[1] : null,
 
         // ── Descriptions ──
@@ -1030,8 +1033,8 @@ class OdooSyncService {
           weight: product.weight || 0,
           metadata: {
             odoo_product_id: product.id,
-            odoo_price: product.list_price || product.marka_price || 0,
-            odoo_price_amount: Math.round((product.list_price || product.marka_price || 0) * 1000),
+            odoo_price: product.retail_price || 0,
+            odoo_price_amount: Math.round((product.retail_price || 0) * 1000),
             odoo_currency: "kwd",
           },
         },
