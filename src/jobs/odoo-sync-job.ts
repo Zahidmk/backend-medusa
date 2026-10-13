@@ -123,15 +123,16 @@ export default async function odooSyncJob(containerOrObj: any) {
             }
           }
 
+          // Publish status, title, description, handle and images are managed in
+          // Medusa — Odoo only refreshes metadata (prices, SKU, stock info).
+          const current = await productService.retrieveProduct(existingProduct.id, {
+            select: ["id", "metadata", "thumbnail"],
+          });
           const updatePayload: any = {
-            title: medusaData.title,
-            description: medusaData.description,
-            handle: medusaData.handle,
-            status: medusaData.status,
-            metadata: medusaData.metadata,
+            metadata: { ...(current.metadata || {}), ...(medusaData.metadata || {}) },
           };
 
-          if (imageUrls.length > 0) {
+          if (imageUrls.length > 0 && !current.thumbnail) {
             updatePayload.thumbnail = imageUrls[0].url;
             updatePayload.images = imageUrls;
           }
@@ -141,7 +142,8 @@ export default async function odooSyncJob(containerOrObj: any) {
           updated++;
           logger.info(`[Odoo Sync Job] Updated: ${medusaData.title} (${medusaProductId}) with ${imageUrls.length} images`);
         } else {
-          const created_products = await productService.createProducts(medusaData);
+          // New products start as draft; publishing is done in Medusa admin.
+          const created_products = await productService.createProducts({ ...medusaData, status: "draft" });
           const created_product = Array.isArray(created_products) ? created_products[0] : created_products;
           medusaProductId = created_product.id;
           created++;
@@ -210,14 +212,31 @@ export default async function odooSyncJob(containerOrObj: any) {
               relations: ["variants"],
             });
 
+            // Prices are stored in fils (1 KWD = 1000), matching the rest of the system
+            const amount = Math.round(price * 1000);
+
             for (const variant of product.variants || []) {
-              const priceSet = await pricingService.createPriceSets({
-                prices: [{ amount: price, currency_code: currency }],
-              });
-              await remoteLink.create({
-                [Modules.PRODUCT]: { variant_id: variant.id },
-                [Modules.PRICING]: { price_set_id: priceSet.id },
-              });
+              const linked = await pgConnection.raw(
+                `SELECT price_set_id FROM product_variant_price_set WHERE variant_id = ? AND deleted_at IS NULL LIMIT 1`,
+                [variant.id]
+              );
+              const existingPriceSetId = linked.rows?.[0]?.price_set_id;
+
+              if (existingPriceSetId) {
+                await pgConnection.raw(
+                  `UPDATE price SET amount = ?, raw_amount = jsonb_build_object('value', ?::text, 'precision', 20), updated_at = NOW()
+                   WHERE price_set_id = ? AND currency_code = ? AND deleted_at IS NULL`,
+                  [amount, amount, existingPriceSetId, currency]
+                );
+              } else {
+                const priceSet = await pricingService.createPriceSets({
+                  prices: [{ amount, currency_code: currency }],
+                });
+                await remoteLink.create({
+                  [Modules.PRODUCT]: { variant_id: variant.id },
+                  [Modules.PRICING]: { price_set_id: priceSet.id },
+                });
+              }
             }
           } catch (priceError: any) {
             logger.warn(`[Odoo Sync Job] Price sync failed for ${medusaData.title}: ${priceError.message}`);
