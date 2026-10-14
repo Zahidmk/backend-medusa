@@ -280,7 +280,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       const mainCurrency = firstVariant?.currency_code || currency
 
       const odooId = meta.odoo_id || meta.product_tmpl_id
-      const odooImg = (odooId && String(odooId) !== 'false') ? `https://oskarllc-new-36501645.dev.odoo.com/web/image/product.template/${odooId}/image_1920` : null
+      const odooImg = null // Odoo's public image URL returns a blank placeholder; images come from /odoo/image via thumbnail
       const firstImgUrl = productImages[0]?.url
       const finalThumbnail = (p.thumbnail && p.thumbnail !== 'false') ? p.thumbnail : (meta.image_url || firstImgUrl || odooImg || null)
       

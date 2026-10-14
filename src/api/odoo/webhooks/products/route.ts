@@ -13,6 +13,7 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
  */
 
 import { ODOO_CONFIG } from "../../../../config/odoo"
+import { odooImageUrl } from "../../../../utils/odoo-image"
 
 const WEBHOOK_SECRET = ODOO_CONFIG.webhookSecret
 const ODOO_BASE_URL = ODOO_CONFIG.url
@@ -173,7 +174,7 @@ function odooCategoryToHandle(odooCategory: string | null): string | null {
  * Generate direct Odoo image URL for a product
  */
 function getOdooImageUrl(odooId: number): string {
-  return `${ODOO_BASE_URL}/web/image/product.product/${odooId}/image_1920`
+  return odooImageUrl(odooId)
 }
 
 interface OdooProductVariantPayload {

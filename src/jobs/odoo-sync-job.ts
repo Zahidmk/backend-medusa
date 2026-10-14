@@ -10,6 +10,7 @@ import {
 } from "@medusajs/framework/types";
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
 import { ODOO_CONFIG } from "../config/odoo";
+import { odooImageUrl } from "../utils/odoo-image";
 
 export default async function odooSyncJob(containerOrObj: any) {
   const container: MedusaContainer = containerOrObj?.resolve ? containerOrObj : containerOrObj?.container;
@@ -110,27 +111,33 @@ export default async function odooSyncJob(containerOrObj: any) {
 
         let medusaProductId: string;
 
-        if (existingProduct) {
-          // Build images array: main thumbnail + gallery images from Odoo
-          const ODOO_URL = ODOO_CONFIG.url;
-          const imageUrls: Array<{ url: string }> = [];
-          if (odooProduct.image_1920) {
-            imageUrls.push({ url: `${ODOO_URL}/web/image/product.template/${odooProduct.id}/image_1920` });
+        // Images are served by our own /odoo/image endpoint (Odoo's public URL only
+        // works for website-published products): main thumbnail + gallery.
+        const imageUrls: Array<{ url: string }> = [];
+        if (odooProduct.image_1920) {
+          imageUrls.push({ url: odooImageUrl(odooProduct.id) });
+        }
+        if (odooProduct.product_template_image_ids?.length > 0) {
+          for (const galleryId of odooProduct.product_template_image_ids) {
+            imageUrls.push({ url: odooImageUrl(odooProduct.id, galleryId) });
           }
-          if (odooProduct.product_template_image_ids?.length > 0) {
-            for (const galleryId of odooProduct.product_template_image_ids) {
-              imageUrls.push({ url: `${ODOO_URL}/web/image/product.image/${galleryId}/image_1920` });
-            }
-          }
+        }
 
+        if (existingProduct) {
           // Publish status, title, description, handle and images are managed in
           // Medusa — Odoo only refreshes metadata (prices, SKU, stock info).
           const current = await productService.retrieveProduct(existingProduct.id, {
-            select: ["id", "metadata", "thumbnail"],
+            select: ["id", "metadata", "thumbnail", "description"],
           });
           const updatePayload: any = {
             metadata: { ...(current.metadata || {}), ...(medusaData.metadata || {}) },
           };
+
+          // Fill an empty description from Odoo once; never overwrite one set in Medusa
+          const odooDescription = (odooProduct as any).medusa_description || odooProduct.description_sale || "";
+          if (!current.description && odooDescription) {
+            updatePayload.description = odooDescription;
+          }
 
           if (imageUrls.length > 0 && !current.thumbnail) {
             updatePayload.thumbnail = imageUrls[0].url;
@@ -143,7 +150,11 @@ export default async function odooSyncJob(containerOrObj: any) {
           logger.info(`[Odoo Sync Job] Updated: ${medusaData.title} (${medusaProductId}) with ${imageUrls.length} images`);
         } else {
           // New products start as draft; publishing is done in Medusa admin.
-          const created_products = await productService.createProducts({ ...medusaData, status: "draft" });
+          const created_products = await productService.createProducts({
+            ...medusaData,
+            status: "draft",
+            ...(imageUrls.length > 0 ? { thumbnail: imageUrls[0].url, images: imageUrls } : {}),
+          });
           const created_product = Array.isArray(created_products) ? created_products[0] : created_products;
           medusaProductId = created_product.id;
           created++;

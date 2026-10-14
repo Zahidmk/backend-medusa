@@ -1,4 +1,5 @@
 import { ExecArgs } from "@medusajs/framework/types"
+import { odooImageUrl } from "../utils/odoo-image"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import axios from "axios"
 
@@ -259,7 +260,7 @@ export default async function odooSync({ container }: ExecArgs) {
         synced_at: new Date().toISOString(),
       })
 
-      const imageUrl = p.website_url ? `${odooUrl}/web/image/product.template/${p.id}/image_1920` : null
+      const imageUrl = odooImageUrl(p.id)
       const existingByOdoo = existingByOdooId.get(odooIdStr)
       const existingProdId = existingByOdoo?.id || existingBySku.get(sku)
 
