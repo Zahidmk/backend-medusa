@@ -519,6 +519,40 @@ class OdooSyncService {
   }
 
   /**
+   * Variants of a product.template in the shape the Odoo product webhook expects
+   * (variant_id, retail_price, free_qty, attributes: {Color: "Black"}).
+   */
+  async fetchVariantPayloads(templateId: number): Promise<any[]> {
+    await this.ensureAuth()
+    const [tpl] = await this.read("product.template", [templateId], ["product_variant_ids"])
+    const variantIds: number[] = tpl?.product_variant_ids || []
+    if (variantIds.length === 0) return []
+    const variants = await this.read("product.product", variantIds, [
+      "display_name", "default_code", "barcode", "retail_price", "qty_available", "free_qty",
+      "product_template_attribute_value_ids",
+    ])
+    const ptavIds = [...new Set(variants.flatMap((v: any) => v.product_template_attribute_value_ids || []))] as number[]
+    const ptav = ptavIds.length
+      ? await this.read("product.template.attribute.value", ptavIds, ["attribute_id", "product_attribute_value_id"])
+      : []
+    const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+    const attrById = new Map<number, [string, string]>(
+      ptav.map((x: any) => [x.id, [cap(x.attribute_id[1]), String(x.product_attribute_value_id[1]).replace(/^.*?:s*/, "").trim()]])
+    )
+    return variants.map((v: any) => ({
+      variant_id: v.id,
+      default_code: v.default_code || undefined,
+      barcode: v.barcode || undefined,
+      retail_price: v.retail_price || 0,
+      free_qty: v.free_qty || v.qty_available || 0,
+      attributes: Object.fromEntries(
+        (v.product_template_attribute_value_ids || []).map((i: number) => attrById.get(i)).filter(Boolean) as [string, string][]
+      ),
+      name: v.display_name,
+    }))
+  }
+
+  /**
    * Fetch a single product by Odoo template ID
    */
   async fetchProductById(templateId: number): Promise<OdooProduct | null> {

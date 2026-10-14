@@ -9,6 +9,7 @@ import {
   MedusaContainer,
 } from "@medusajs/framework/types";
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
+import axios from "axios";
 import { ODOO_CONFIG } from "../config/odoo";
 import { odooImageUrl } from "../utils/odoo-image";
 
@@ -251,6 +252,38 @@ export default async function odooSyncJob(containerOrObj: any) {
             }
           } catch (priceError: any) {
             logger.warn(`[Odoo Sync Job] Price sync failed for ${medusaData.title}: ${priceError.message}`);
+          }
+        }
+
+        // Attribute variants (Color, Size...): Odoo products with several variants are synced through
+        // the Odoo product webhook logic, which builds Medusa options, option values and variants.
+        if ((odooProduct.product_variant_ids?.length ?? 0) > 1 && (odooProduct.attribute_line_ids?.length ?? 0) > 0) {
+          try {
+            const variants = await odooSyncService.fetchVariantPayloads(odooProduct.id);
+            if (variants.length > 1) {
+              await axios.post(
+                `http://localhost:${process.env.PORT || 9000}/odoo/webhooks/products`,
+                {
+                  webhook_secret: ODOO_CONFIG.webhookSecret,
+                  event_type: "product.updated",
+                  product: {
+                    odoo_id: odooProduct.id,
+                    name: odooProduct.name,
+                    default_code: odooProduct.default_code || undefined,
+                    barcode: odooProduct.barcode || undefined,
+                    retail_price: (odooProduct as any).retail_price || 0,
+                    weight: odooProduct.weight || undefined,
+                    custom_brand_id: (odooProduct as any).custom_brand_id || undefined,
+                    brand: odooProduct.x_studio_brand_1 || undefined,
+                    variants,
+                  },
+                },
+                { timeout: 120000 }
+              );
+              logger.info(`[Odoo Sync Job] Synced ${variants.length} variants for ${medusaData.title}`);
+            }
+          } catch (variantErr: any) {
+            logger.warn(`[Odoo Sync Job] Variant sync failed for ${medusaData.title}: ${variantErr.message}`);
           }
         }
       } catch (productError: any) {
