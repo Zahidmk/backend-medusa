@@ -140,7 +140,7 @@ export default async function odooSyncJob(containerOrObj: any) {
             updatePayload.description = odooDescription;
           }
 
-          if (imageUrls.length > 0 && (!current.thumbnail || //web/image//.test(current.thumbnail))) {
+          if (imageUrls.length > 0 && (!current.thumbnail || /\/web\/image\//.test(current.thumbnail))) {
             updatePayload.thumbnail = imageUrls[0].url;
             updatePayload.images = imageUrls;
           }
