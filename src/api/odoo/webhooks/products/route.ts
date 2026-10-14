@@ -909,7 +909,7 @@ async function upsertProduct(
   if (existBySku.rows?.length > 0) {
     prodId = existBySku.rows[0].id
     action = "updated"
-    const effectiveImgUrl = p.image_url || (p.images && p.images[0]) || (odooId ? getOdooImageUrl(odooId) : null)
+    const effectiveImgUrl = p.image_url || (p.images && p.images[0]) || (p.image_1920 && odooId ? getOdooImageUrl(odooId) : null)
     await pg.raw(
       // Status, title, description and an existing thumbnail are managed in Medusa — not overwritten here
       `UPDATE product SET weight=?, metadata=COALESCE(metadata, '{}'::jsonb) || ?::jsonb, thumbnail=COALESCE(thumbnail, ?), updated_at=NOW() WHERE id=?`,
@@ -922,7 +922,7 @@ async function upsertProduct(
     if (existingHandles.has(handle)) handle = `${handle}-${Date.now().toString(36)}`
     existingHandles.add(handle)
 
-    let thumbnail: string | null = p.image_url || (p.images && p.images[0]) || (odooId ? getOdooImageUrl(odooId) : null)
+    let thumbnail: string | null = p.image_url || (p.images && p.images[0]) || (p.image_1920 && odooId ? getOdooImageUrl(odooId) : null)
 
     prodId = genId("prod")
     action = "created"
