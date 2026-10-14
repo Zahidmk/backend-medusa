@@ -152,14 +152,14 @@ export default async function odooSync({ container }: ExecArgs) {
   console.log(`\n4. Fetching products (page size: ${PAGE_SIZE})...`)
   const fields = [
     "id", "name", "default_code", "barcode",
-    "list_price", "marka_price",
+    "retail_price", "list_price", "marka_price",
     "description_sale", "categ_id", "brand_id", "x_studio_brand_1", "custom_brand_id",
     "weight", "qty_available", "is_published", "website_url",
   ]
 
   interface OdooProduct {
     id: number; name: string; default_code: string | false; barcode: string | false
-    list_price: number;
+    list_price: number; retail_price: number;
     compare_list_price?: number | false | null;
     marka_price?: number | false | null; x_marka_price?: number | false | null; x_compare_list_price?: number | false | null
     description_sale: string | false; categ_id: [number, string] | false
@@ -247,14 +247,15 @@ export default async function odooSync({ container }: ExecArgs) {
       const brandOdooId = (Array.isArray(p.custom_brand_id) ? p.custom_brand_id[0] : null) || (Array.isArray(p.brand_id) ? p.brand_id[0] : null) || null;
       const brand = brandName;
       const category = p.categ_id && Array.isArray(p.categ_id) ? p.categ_id[1] : null
-      const status = ((p as any).is_published === true || (p as any).website_published === true) ? "published" : "draft"
+      const status = "draft" // publishing is managed in Medusa admin
 
       const metadata = JSON.stringify({
         odoo_id: p.id, odoo_sku: sku, odoo_barcode: p.barcode || null,
         odoo_category: category, odoo_brand: brand,
         odoo_qty: p.qty_available || 0, 
         marka_price: p.marka_price || null,
-        list_price: p.list_price || null,
+        retail_price: p.retail_price || null,
+        list_price: p.retail_price || null,
         synced_at: new Date().toISOString(),
       })
 
@@ -264,8 +265,8 @@ export default async function odooSync({ container }: ExecArgs) {
 
       if (existingProdId) {
         await pg.raw(
-          `UPDATE product SET title=?, description=?, status=?, weight=?, metadata=?, thumbnail=COALESCE(?,thumbnail), updated_at=NOW() WHERE id=?`,
-          [p.name, p.description_sale || "", status, p.weight ? String(p.weight) : null, metadata, imageUrl, existingProdId]
+          `UPDATE product SET weight=?, metadata=COALESCE(metadata, '{}'::jsonb) || ?::jsonb, thumbnail=COALESCE(thumbnail,?), updated_at=NOW() WHERE id=?`,
+          [p.weight ? String(p.weight) : null, metadata, imageUrl, existingProdId]
         )
         const vr = await pg.raw(
           `SELECT pv.id as variant_id, pvps.price_set_id FROM product_variant pv JOIN product_variant_price_set pvps ON pvps.variant_id=pv.id WHERE pv.product_id=? AND pv.deleted_at IS NULL LIMIT 1`,
@@ -274,8 +275,8 @@ export default async function odooSync({ container }: ExecArgs) {
         if (vr.rows?.length > 0) {
           const vId = vr.rows[0].variant_id
           await pg.raw(`UPDATE product_variant SET allow_backorder = true WHERE id = ?`, [vId])
-          if (p.list_price > 0) {
-            const scaledPrice = Math.round(p.list_price * CURRENCY_MULTIPLIER)
+          if (p.retail_price > 0) {
+            const scaledPrice = Math.round(p.retail_price * CURRENCY_MULTIPLIER)
             const rawAmt = JSON.stringify({ value: String(scaledPrice), precision: 20 })
             await pg.raw(
               `UPDATE price SET amount=?, currency_code=?, raw_amount=?, updated_at=NOW() WHERE price_set_id=? AND deleted_at IS NULL`, 
@@ -360,9 +361,9 @@ export default async function odooSync({ container }: ExecArgs) {
           await pg.raw(`INSERT INTO inventory_level (id, inventory_item_id, location_id, stocked_quantity, reserved_quantity, created_at, updated_at) VALUES (?, ?, ?, ?, 0, NOW(), NOW())`, [genId("ilev"), invId, stockLocationId, p.qty_available || 0])
         }
 
-        if (p.list_price > 0) {
+        if (p.retail_price > 0) {
           const psid = genId("pset")
-          const scaledPrice = Math.round(p.list_price * CURRENCY_MULTIPLIER)
+          const scaledPrice = Math.round(p.retail_price * CURRENCY_MULTIPLIER)
           await pg.raw(`INSERT INTO price_set (id,created_at,updated_at) VALUES (?,NOW(),NOW())`, [psid])
           await pg.raw(`INSERT INTO product_variant_price_set (id,variant_id,price_set_id,created_at,updated_at) VALUES (?,?,?,NOW(),NOW())`, [genId("pvps"), variantId, psid])
           const rawAmt = JSON.stringify({ value: String(scaledPrice), precision: 20 })
