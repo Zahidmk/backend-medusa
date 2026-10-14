@@ -563,6 +563,7 @@ async function syncProductVariantsAndOptions(
       attributes: vAttrs,
       free_qty: varQty,
       synced_at: new Date().toISOString(),
+      ...(v.image_url ? { image_url: v.image_url } : {}),
     }
 
     let varRes = await pg.raw(
@@ -756,6 +757,30 @@ async function syncProductVariantsAndOptions(
       )
     } catch (err) {
       console.warn(`[Odoo Webhook] Stale variant cleanup failed for product ${prodId}: ${err}`)
+    }
+  }
+
+  // Variant pictures: add them to the product gallery (the storefront switches the main image to the
+  // variant's metadata.image_url) and use the first one as thumbnail when the product has none.
+  const variantImages = rawVariants.map((rv) => rv.image_url).filter((x): x is string => !!x)
+  if (variantImages.length > 0) {
+    try {
+      const have = await pg.raw(`SELECT url, rank FROM image WHERE product_id = ? AND deleted_at IS NULL`, [prodId])
+      const haveUrls = new Set<string>((have.rows || []).map((r: any) => r.url))
+      let nextRank = (have.rows || []).reduce((m: number, r: any) => Math.max(m, Number(r.rank) + 1), 0)
+      for (const url of variantImages) {
+        if (haveUrls.has(url)) continue
+        await pg.raw(
+          `INSERT INTO image (id, url, rank, product_id, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())`,
+          [genId("img"), url, nextRank++, prodId]
+        )
+      }
+      await pg.raw(
+        `UPDATE product SET thumbnail = ?, updated_at = NOW() WHERE id = ? AND (thumbnail IS NULL OR thumbnail = '')`,
+        [variantImages[0], prodId]
+      )
+    } catch (imgErr) {
+      console.warn(`[Odoo Webhook] Variant image sync failed for ${prodId}: ${imgErr}`)
     }
   }
 

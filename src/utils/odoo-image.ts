@@ -5,8 +5,9 @@
  */
 const PUBLIC_BACKEND_URL = (process.env.PUBLIC_BACKEND_URL || "https://admin.markasouq.com").replace(/\/$/, "")
 
-/** URL of a product.template main image, or a product.product.image gallery image when galleryId is given. */
-export function odooImageUrl(templateId: number | string, galleryId?: number | string): string {
+/** URL of a product.template main image, a product.image gallery image when galleryId is given, or a product.product variant image when variantId is given. */
+export function odooImageUrl(templateId: number | string, galleryId?: number | string, variantId?: number | string): string {
   const base = `${PUBLIC_BACKEND_URL}/odoo/image/${templateId}`
+  if (variantId) return `${base}?variant=${variantId}`
   return galleryId ? `${base}?gallery=${galleryId}` : base
 }

@@ -1,6 +1,7 @@
 /**
  * GET /odoo/image/:id            → main image of Odoo product.template :id
  * GET /odoo/image/:id?gallery=N  → gallery image N (product.image) of that product
+ * GET /odoo/image/:id?variant=V  → image of Odoo variant V (product.product)
  *
  * Fetches image_1920 through the Odoo API (authenticated), caches it on disk and
  * serves it. Needed because Odoo's public /web/image URL only works for products
@@ -62,12 +63,14 @@ function detectMime(buf: Buffer): string {
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const id = Number(req.params.id)
   const gallery = req.query.gallery !== undefined ? Number(req.query.gallery) : null
-  if (!Number.isInteger(id) || id <= 0 || (gallery !== null && (!Number.isInteger(gallery) || gallery <= 0))) {
+  const variant = req.query.variant !== undefined ? Number(req.query.variant) : null
+  const bad = (n: number | null) => n !== null && (!Number.isInteger(n) || n <= 0)
+  if (!Number.isInteger(id) || id <= 0 || bad(gallery) || bad(variant)) {
     return res.status(400).json({ message: "invalid id" })
   }
 
-  const model = gallery ? "product.image" : "product.template"
-  const recordId = gallery || id
+  const model = variant ? "product.product" : gallery ? "product.image" : "product.template"
+  const recordId = variant || gallery || id
   const cacheFile = path.join(CACHE_DIR, `${model}-${recordId}.img`)
 
   try {
