@@ -776,8 +776,8 @@ async function upsertProduct(
   const price = Math.round(rawPrice * KWD_FILS_DIVISOR)
   const description = p.description_sale || p.description || ""
   const weight = p.weight ? String(p.weight) : null
-  const isPubFlag = p.is_published === true || p.website_published === true || p.published === true || p.x_studio_published === true || String(p.is_published) === "true" || String(p.website_published) === "true"
-  const status = isPubFlag ? "published" : "draft"
+  // Publishing is managed in Medusa admin — new products from Odoo start as draft
+  const status = "draft"
 
   const rawBarcode = p.barcode || null
   const barcode = rawBarcode
@@ -910,8 +910,9 @@ async function upsertProduct(
     action = "updated"
     const effectiveImgUrl = p.image_url || (p.images && p.images[0]) || (odooId ? getOdooImageUrl(odooId) : null)
     await pg.raw(
-      `UPDATE product SET title=?, description=?, weight=?, metadata=?, status=?, thumbnail=COALESCE(?, thumbnail, ?), updated_at=NOW() WHERE id=?`,
-      [title, description, weight, JSON.stringify(metadata), status, effectiveImgUrl, effectiveImgUrl, prodId]
+      // Status, title, description and an existing thumbnail are managed in Medusa — not overwritten here
+      `UPDATE product SET weight=?, metadata=COALESCE(metadata, '{}'::jsonb) || ?::jsonb, thumbnail=COALESCE(thumbnail, ?), updated_at=NOW() WHERE id=?`,
+      [weight, JSON.stringify(metadata), effectiveImgUrl, prodId]
     )
   } else {
     let handle = slugify(title)

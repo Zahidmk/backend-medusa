@@ -78,10 +78,9 @@ export async function POST(
 
           if (existingProduct) {
             // Update existing product
+            // Title, description and status are managed in Medusa — only refresh Odoo metadata
             await productService.updateProducts(existingProduct.id, {
-              title: medusaProduct.title,
-              description: medusaProduct.description,
-              metadata: medusaProduct.metadata,
+              metadata: { ...((existingProduct as any).metadata || {}), ...(medusaProduct.metadata || {}) },
             })
             result.updated++
           } else {

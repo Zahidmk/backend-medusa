@@ -167,7 +167,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         // Create product
         await pool.query(
           `INSERT INTO product (id, title, handle, status, metadata, created_at, updated_at)
-           VALUES ($1, $2, $3, 'published', $4, NOW(), NOW())`,
+           VALUES ($1, $2, $3, 'draft', $4, NOW(), NOW())`,
           [
             productId,
             product.name,
