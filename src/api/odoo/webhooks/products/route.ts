@@ -608,7 +608,7 @@ async function syncProductVariantsAndOptions(
       vid = varRes.rows[0].id
       await pg.raw(
         `UPDATE product_variant 
-         SET product_id = ?, title = ?, sku = ?, barcode = COALESCE(?, barcode), metadata = ?, allow_backorder = true, variant_rank = ?, updated_at = NOW() 
+         SET product_id = ?, title = ?, sku = ?, barcode = COALESCE(?, barcode), metadata = ?, allow_backorder = false, variant_rank = ?, updated_at = NOW() 
          WHERE id = ?`,
         [prodId, varTitle, varSku, safeVarBarcode, JSON.stringify(varMetadata), idx, vid]
       )
@@ -616,7 +616,7 @@ async function syncProductVariantsAndOptions(
       vid = genId("variant")
       await pg.raw(
         `INSERT INTO product_variant (id, product_id, title, sku, barcode, manage_inventory, allow_backorder, variant_rank, metadata, created_at, updated_at) 
-         VALUES (?, ?, ?, ?, ?, true, true, ?, ?, NOW(), NOW())`,
+         VALUES (?, ?, ?, ?, ?, true, false, ?, ?, NOW(), NOW())`,
         [vid, prodId, varTitle, varSku, safeVarBarcode, idx, JSON.stringify(varMetadata)]
       )
     }

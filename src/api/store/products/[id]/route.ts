@@ -52,7 +52,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
               pv.weight, pv.length, pv.height, pv.width,
               pv.material, pv.origin_country, pv.variant_rank,
               pv.metadata as variant_metadata,
-              pp.amount as price, pp.currency_code
+              pp.amount as price, pp.currency_code,
+              (SELECT COALESCE(SUM(il.stocked_quantity - il.reserved_quantity), 0) FROM product_variant_inventory_item pvii JOIN inventory_level il ON il.inventory_item_id = pvii.inventory_item_id AND il.deleted_at IS NULL WHERE pvii.variant_id = pv.id AND pvii.deleted_at IS NULL) AS stock_qty
        FROM product_variant pv
        LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id
        LEFT JOIN price pp ON pp.price_set_id = pvps.price_set_id 
@@ -94,7 +95,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         original_price: priceAmt,
         currency_code: currCode,
         prices: priceAmt != null ? [{ amount: priceAmt, currency_code: currCode }] : [],
-        inventory_quantity: metadata.odoo_stock || metadata.stock_qty || 0,
+        inventory_quantity: Number(v.stock_qty ?? 0),
         allow_backorder: v.allow_backorder,
         weight: v.weight,
         metadata: vMeta,

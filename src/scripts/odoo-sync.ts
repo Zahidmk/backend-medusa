@@ -275,7 +275,7 @@ export default async function odooSync({ container }: ExecArgs) {
         )
         if (vr.rows?.length > 0) {
           const vId = vr.rows[0].variant_id
-          await pg.raw(`UPDATE product_variant SET allow_backorder = true WHERE id = ?`, [vId])
+          await pg.raw(`UPDATE product_variant SET allow_backorder = false WHERE id = ?`, [vId])
           if (p.retail_price > 0) {
             const scaledPrice = Math.round(p.retail_price * CURRENCY_MULTIPLIER)
             const rawAmt = JSON.stringify({ value: String(scaledPrice), precision: 20 })
@@ -345,7 +345,7 @@ export default async function odooSync({ container }: ExecArgs) {
         }
 
         await pg.raw(
-          `INSERT INTO product_variant (id,product_id,title,sku,barcode,manage_inventory,allow_backorder,variant_rank,created_at,updated_at) VALUES (?,?,'Default',?,?,true,true,0,NOW(),NOW())`,
+          `INSERT INTO product_variant (id,product_id,title,sku,barcode,manage_inventory,allow_backorder,variant_rank,created_at,updated_at) VALUES (?,?,'Default',?,?,true,false,0,NOW(),NOW())`,
           [variantId, productId, sku, safeBarcode]
         )
 
