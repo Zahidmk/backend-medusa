@@ -530,7 +530,7 @@ class OdooSyncService {
     if (variantIds.length === 0) return []
     const variants = await this.read("product.product", variantIds, [
       "display_name", "default_code", "barcode", "retail_price", "qty_available", "free_qty",
-      "product_template_attribute_value_ids", "image_1920",
+      "product_template_attribute_value_ids", "image_variant_1920",
     ])
     const ptavIds = [...new Set(variants.flatMap((v: any) => v.product_template_attribute_value_ids || []))] as number[]
     const ptav = ptavIds.length
@@ -550,7 +550,8 @@ class OdooSyncService {
         (v.product_template_attribute_value_ids || []).map((i: number) => attrById.get(i)).filter(Boolean) as [string, string][]
       ),
       name: v.display_name,
-      image_url: v.image_1920 ? odooImageUrl(templateId, undefined, v.id) : undefined,
+      // image_variant_1920 is the variant's OWN picture (image_1920 would fall back to the product's)
+      image_url: v.image_variant_1920 ? odooImageUrl(templateId, undefined, v.id) : undefined,
     }))
   }
 

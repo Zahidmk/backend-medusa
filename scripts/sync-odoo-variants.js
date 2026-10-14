@@ -18,7 +18,7 @@ const rpc = (p) => axios.post(u + "/jsonrpc", { jsonrpc: "2.0", method: "call", 
   console.log(APPLY ? "APPLY" : "DRY RUN", "- Odoo attribute templates:", tpls.length, "| in Medusa with >1 variants:", todo.length, "| published among them:", todo.filter((t) => mine.get(t.id) === "published").length)
   let ok = 0, fail = 0, nvars = 0
   for (const t of todo) {
-    const vs = await call("product.product", "read", [t.product_variant_ids], { fields: ["display_name", "default_code", "barcode", "retail_price", "qty_available", "free_qty", "product_template_attribute_value_ids", "image_1920"] })
+    const vs = await call("product.product", "read", [t.product_variant_ids], { fields: ["display_name", "default_code", "barcode", "retail_price", "qty_available", "free_qty", "product_template_attribute_value_ids", "image_variant_1920"] })
     const ptavIds = [...new Set(vs.flatMap((v) => v.product_template_attribute_value_ids))]
     const ptav = ptavIds.length ? await call("product.template.attribute.value", "read", [ptavIds], { fields: ["attribute_id", "product_attribute_value_id"] }) : []
     const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1); const pm = new Map(ptav.map((x) => [x.id, [cap(x.attribute_id[1]), x.product_attribute_value_id[1].replace(/^.*?:\s*/, "").trim()]]))
@@ -26,7 +26,7 @@ const rpc = (p) => axios.post(u + "/jsonrpc", { jsonrpc: "2.0", method: "call", 
       variant_id: v.id, default_code: v.default_code || undefined, barcode: v.barcode || undefined,
       retail_price: v.retail_price || 0, free_qty: v.free_qty || v.qty_available || 0,
       attributes: Object.fromEntries(v.product_template_attribute_value_ids.map((i) => pm.get(i)).filter(Boolean)), name: v.display_name,
-      image_url: v.image_1920 ? `${BASE}/odoo/image/${t.id}?variant=${v.id}` : undefined,
+      image_url: v.image_variant_1920 ? `${BASE}/odoo/image/${t.id}?variant=${v.id}` : undefined,
     }))
     nvars += variants.length
     const body = { webhook_secret: ODOO_WEBHOOK_SECRET, event_type: "product.updated", product: {

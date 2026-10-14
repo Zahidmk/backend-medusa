@@ -33,11 +33,13 @@ async function getUid(): Promise<number> {
 }
 
 async function fetchImage(model: string, recordId: number): Promise<Buffer | null> {
+  // For variants use the variant's own picture, not the inherited product picture
+  const field = model === "product.product" ? "image_variant_1920" : "image_1920"
   const read = async () => {
     const uid = await getUid()
     return rpc({
       service: "object", method: "execute_kw",
-      args: [ODOO_CONFIG.db, uid, ODOO_CONFIG.password, model, "read", [[recordId]], { fields: ["image_1920"] }],
+      args: [ODOO_CONFIG.db, uid, ODOO_CONFIG.password, model, "read", [[recordId]], { fields: [field] }],
     })
   }
   let rows: any[]
@@ -47,7 +49,7 @@ async function fetchImage(model: string, recordId: number): Promise<Buffer | nul
     cachedUid = null // uid may be stale — retry once with a fresh login
     rows = await read()
   }
-  const b64 = rows?.[0]?.image_1920
+  const b64 = rows?.[0]?.[field]
   return b64 ? Buffer.from(b64, "base64") : null
 }
 
