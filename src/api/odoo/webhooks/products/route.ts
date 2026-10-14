@@ -640,7 +640,7 @@ async function syncProductVariantsAndOptions(
       )
     }
 
-    if (psId && varPrice >= 0) {
+    if (psId && varPrice > 0) { // never write a 0 price: keeps prices set manually in Medusa and avoids free items
       const rawAmount = JSON.stringify({ value: String(varPrice), precision: 20 })
       const existsKwd = await pg.raw(
         `SELECT id FROM price WHERE price_set_id = ? AND currency_code = 'kwd' AND deleted_at IS NULL LIMIT 1`,
