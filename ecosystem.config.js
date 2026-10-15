@@ -1,25 +1,27 @@
 /**
  * PM2 Ecosystem Configuration for Marqa Souq
- * 
- * IMPORTANT: Medusa v2 Production Architecture
- * - Backend MUST run from .medusa/server/ directory (built output)
- * - Admin UI is bundled with backend and served at /app
- * - Frontend runs as separate Next.js application
- * 
- * Deployment Steps:
- * 1. cd backend/my-medusa-store && yarn build
- * 2. cp .env .medusa/server/.env
- * 3. cd .medusa/server && yarn install --production
- * 4. pm2 restart medusa-backend
+ *
+ * These entries mirror how the two processes actually run in production
+ * (verified against `pm2 jlist` on the VPS, Oct 2026). The previous version of
+ * this file pointed at /var/www/marqa-souq/backend/my-medusa-store/.medusa/server,
+ * a path that does not exist on the server, so `pm2 start ecosystem.config.js`
+ * would have failed to bring the backend up.
+ *
+ * Both apps are started with `npm run start` from their own directory:
+ *   - backend  : npm run start  ->  medusa start   (see package.json)
+ *   - frontend : npm run start  ->  next start     (separate markasouq-web repo)
+ *
+ * Deployment steps (backend):
+ *   1. cd /var/www/marqa-souq/backend/backend-medusa && yarn build
+ *   2. pm2 restart medusa-backend
  */
 module.exports = {
   apps: [
     {
       name: 'medusa-backend',
-      // CRITICAL: Run from the built server directory, NOT the source
-      cwd: '/var/www/marqa-souq/backend/my-medusa-store/.medusa/server',
-      script: './node_modules/.bin/medusa',
-      args: 'start',
+      cwd: '/var/www/marqa-souq/backend/backend-medusa',
+      script: 'npm',
+      args: 'run start',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -32,18 +34,15 @@ module.exports = {
       error_file: '/var/log/pm2/medusa-error.log',
       out_file: '/var/log/pm2/medusa-out.log',
       time: true,
-      // Graceful restart configuration
       kill_timeout: 5000,
-      wait_ready: true,
       listen_timeout: 30000,
-      // Restart on memory limit
       exp_backoff_restart_delay: 100,
     },
     {
       name: 'nextjs-storefront',
       cwd: '/var/www/marqa-souq/frontend/markasouq-web',
-      script: 'node_modules/.bin/next',
-      args: 'start -p 3000',
+      script: 'npm',
+      args: 'run start',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -57,7 +56,6 @@ module.exports = {
       out_file: '/var/log/pm2/nextjs-out.log',
       time: true,
       kill_timeout: 5000,
-      wait_ready: true,
       listen_timeout: 10000,
     }
   ]
