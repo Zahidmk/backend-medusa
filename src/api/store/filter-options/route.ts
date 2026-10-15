@@ -144,6 +144,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       { value: "price_desc", label: "Price: High to Low" },
     ]
 
+    // Filter facets track catalogue structure rather than live stock: cache briefly.
+    res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600")
     res.json({
       filters,
       price_range: priceRanges,

@@ -67,6 +67,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     created_at: b.created_at,
   }))
 
+  // Brand list changes rarely and carries no stock or pricing: cache briefly.
+  res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600")
   res.json({ brands, count: total, limit, offset })
 }
 

@@ -119,6 +119,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       }
     }
 
+    // Catalogue structure, not stock or pricing: safe to cache briefly.
+    res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600")
     res.json({
       categories: result,
       total: result.length,
