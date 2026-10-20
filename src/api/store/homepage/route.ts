@@ -97,7 +97,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
         const varResult = await pgConnection.raw(
           `SELECT pv.id, pv.product_id, pv.title, pv.sku, pv.manage_inventory,
-                  pvp.amount, pvp.currency_code
+                  pvp.amount, pvp.currency_code,
+                  (SELECT COALESCE(SUM(il.stocked_quantity - il.reserved_quantity), 0) FROM product_variant_inventory_item pvii JOIN inventory_level il ON il.inventory_item_id = pvii.inventory_item_id AND il.deleted_at IS NULL WHERE pvii.variant_id = pv.id AND pvii.deleted_at IS NULL) AS stock_qty
            FROM product_variant pv
            LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id
            LEFT JOIN price pvp ON pvp.price_set_id = pvps.price_set_id AND pvp.currency_code = 'kwd'
@@ -119,19 +120,21 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
               title: v.title,
               sku: v.sku,
               manage_inventory: v.manage_inventory,
+              inventory_quantity: Number(v.stock_qty ?? 0),
               prices: v.amount != null ? [{ amount: v.amount, currency_code: v.currency_code }] : [],
             })
           }
         }
 
+        // Stock comes from Medusa inventory levels so cards agree with the product detail page
         return products.map((p: any) => {
-          const meta = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : (p.metadata || {})
+          const variants = variantsByProduct[p.id] || []
           return {
             ...p,
             thumbnail: makeAbsolute(p.thumbnail),
             images: imagesByProduct[p.id] || [],
-            variants: variantsByProduct[p.id] || [],
-            in_stock: (meta.odoo_stock || meta.odoo_qty || meta.stock_qty || 0) > 0,
+            variants,
+            in_stock: variants.some((v: any) => v.manage_inventory === false || v.inventory_quantity > 0),
           }
         })
       }
@@ -219,7 +222,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
       const varResult = await pgConnection.raw(
         `SELECT pv.id, pv.product_id, pv.title, pv.sku, pv.manage_inventory,
-                pvp.amount, pvp.currency_code
+                pvp.amount, pvp.currency_code,
+                (SELECT COALESCE(SUM(il.stocked_quantity - il.reserved_quantity), 0) FROM product_variant_inventory_item pvii JOIN inventory_level il ON il.inventory_item_id = pvii.inventory_item_id AND il.deleted_at IS NULL WHERE pvii.variant_id = pv.id AND pvii.deleted_at IS NULL) AS stock_qty
          FROM product_variant pv
          LEFT JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id
          LEFT JOIN price pvp ON pvp.price_set_id = pvps.price_set_id AND pvp.currency_code = 'kwd'
@@ -241,19 +245,20 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
             title: v.title,
             sku: v.sku,
             manage_inventory: v.manage_inventory,
+            inventory_quantity: Number(v.stock_qty ?? 0),
             prices: v.amount != null ? [{ amount: v.amount, currency_code: v.currency_code }] : [],
           })
         }
       }
 
       recommendedFinal = recommendedFinal.map((p: any) => {
-        const meta = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : (p.metadata || {})
+        const variants = variantsByProduct[p.id] || []
         return {
           ...p,
           thumbnail: makeAbsolute(p.thumbnail),
           images: imagesByProduct[p.id] || [],
-          variants: variantsByProduct[p.id] || [],
-          in_stock: (meta.odoo_stock || meta.odoo_qty || meta.stock_qty || 0) > 0,
+          variants,
+          in_stock: variants.some((v: any) => v.manage_inventory === false || v.inventory_quantity > 0),
         }
       })
     }

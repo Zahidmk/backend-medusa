@@ -109,8 +109,19 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       )`)
       params.push(color)
     }
+    // Stock comes from Medusa inventory levels so listings agree with the product detail page
+    const inStockSql = `EXISTS (
+      SELECT 1 FROM product_variant sv
+      WHERE sv.product_id = p.id AND sv.deleted_at IS NULL
+        AND (sv.manage_inventory = false OR (
+          SELECT COALESCE(SUM(il.stocked_quantity - il.reserved_quantity), 0)
+          FROM product_variant_inventory_item pvii
+          JOIN inventory_level il ON il.inventory_item_id = pvii.inventory_item_id AND il.deleted_at IS NULL
+          WHERE pvii.variant_id = sv.id AND pvii.deleted_at IS NULL
+        ) > 0)
+    )`
     if (inStock === "true") {
-      conditions.push("COALESCE((p.metadata->>'odoo_stock')::numeric, COALESCE((p.metadata->>'stock_qty')::numeric, 0)) > 0")
+      conditions.push(inStockSql)
     }
 
     // Sort mapping — outerOrderBy uses column aliases from the subquery SELECT
@@ -144,7 +155,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
                 p.id, p.title, p.handle, p.thumbnail, p.subtitle,
                 p.description, p.metadata, p.created_at,
                 pp.amount as price, pp.currency_code,
-                pv.id as variant_id, pv.sku
+                pv.id as variant_id, pv.sku,
+                ${inStockSql} as in_stock
          FROM product p
          JOIN product_category_product pcp ON pcp.product_id = p.id
          LEFT JOIN product_variant pv ON pv.product_id = p.id AND pv.deleted_at IS NULL
@@ -169,7 +181,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         subtitle: p.subtitle,
         price: p.price ? parseFloat(p.price) : null,
         currency_code: p.currency_code || currency,
-        in_stock: (meta.odoo_stock || meta.odoo_qty || meta.stock_qty || 0) > 0,
+        in_stock: Boolean(p.in_stock),
         brand: meta.brand || meta.odoo_brand || meta.brand_name || extractBrand(p.title),
         created_at: p.created_at,
       }
