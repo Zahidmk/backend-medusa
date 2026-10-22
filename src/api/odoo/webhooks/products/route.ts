@@ -1074,7 +1074,8 @@ async function upsertProduct(
       if (existingBrand.rows?.length > 0) {
         brandId = existingBrand.rows[0].id;
         const existingLogo = existingBrand.rows[0].logo_url;
-        if (brandImageUrl && (existingLogo !== brandImageUrl)) {
+        const logoIsLocal = String(existingLogo || "").includes("/static/uploads/");
+        if (brandImageUrl && !logoIsLocal && (existingLogo !== brandImageUrl)) {
           await pg.raw(
             `UPDATE brand SET logo_url = ?, updated_at = NOW() WHERE id = ?`,
             [brandImageUrl, brandId]

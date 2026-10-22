@@ -182,7 +182,9 @@ export default async function odooSyncJob(containerOrObj: any) {
               brandId = existingBrand.rows[0].id;
               // Always update logo_url from Odoo if we have one (Odoo is source of truth for logos)
               const existingLogo = existingBrand.rows[0].logo_url;
-              if (brandImageUrl && (existingLogo !== brandImageUrl)) {
+              // Logos stored on our own server must not be replaced by an Odoo URL (breaks when the Odoo DB changes)
+              const logoIsLocal = String(existingLogo || "").includes("/static/uploads/");
+              if (brandImageUrl && !logoIsLocal && (existingLogo !== brandImageUrl)) {
                 await pgConnection.raw(
                   `UPDATE brand SET logo_url = ?, updated_at = NOW() WHERE id = ?`,
                   [brandImageUrl, brandId]

@@ -85,7 +85,9 @@ export async function runBrandSync(container: MedusaContainer, logger: any): Pro
       if (existingResult.rows?.length > 0) {
         const existingId = existingResult.rows[0].id;
         const currentLogo = existingResult.rows[0].logo_url;
-        const newLogo = logoUrl || currentLogo;
+        // Keep logos stored on our own server; Odoo URLs break when the Odoo DB changes
+        const logoIsLocal = String(currentLogo || "").includes("/static/uploads/");
+        const newLogo = logoIsLocal ? currentLogo : (logoUrl || currentLogo);
 
         await pgConnection.raw(
           `UPDATE brand SET updated_at = NOW(), logo_url = ? WHERE id = ?`,

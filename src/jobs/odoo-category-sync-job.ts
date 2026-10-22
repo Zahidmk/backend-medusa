@@ -106,15 +106,19 @@ export default async function odooCategorySyncJob(containerOrObj: any) {
       try {
         const odooUrl = (process.env.ODOO_URL || "").replace(/\/$/, "")
         const imageUrl = `${odooUrl}/web/image/product.public.category/${oCategory.id}/image_1920`
-        const metadata = {
+        const metadata: Record<string, any> = {
           odoo_id: oCategory.id,
           image_url: imageUrl,
         }
 
         const existing = await pgConnection.raw(
-          `SELECT id, handle FROM product_category WHERE metadata->>'odoo_id' = ? LIMIT 1`,
+          `SELECT id, handle, metadata->>'image_local' AS image_local FROM product_category WHERE metadata->>'odoo_id' = ? LIMIT 1`,
           [String(oCategory.id)]
         )
+
+        // Images stored on our own server (image_local) must never be replaced by an Odoo URL,
+        // which breaks whenever the Odoo database is replaced or has no image.
+        if (existing.rows[0]?.image_local === "true") delete metadata.image_url
 
         if (existing.rows.length > 0) {
           const existingId = existing.rows[0].id
@@ -174,8 +178,10 @@ export default async function odooCategorySyncJob(containerOrObj: any) {
     }
 
     // Clean up categories in Medusa that are no longer synced from Odoo
+    // Pruning is opt-in: after an Odoo database switch, ids missing from the new database
+    // would otherwise hide categories (and their local images) from the storefront.
     let softDeletedCount = 0
-    try {
+    if (process.env.ODOO_CATEGORY_PRUNE === "true") try {
       const medusaCategories = await pgConnection.raw(
         `SELECT id, metadata->>'odoo_id' as odoo_id FROM product_category WHERE metadata->>'odoo_id' IS NOT NULL AND deleted_at IS NULL`
       )
