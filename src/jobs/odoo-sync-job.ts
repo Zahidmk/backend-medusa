@@ -237,11 +237,19 @@ export default async function odooSyncJob(containerOrObj: any) {
               const existingPriceSetId = linked.rows?.[0]?.price_set_id;
 
               if (existingPriceSetId) {
-                await pgConnection.raw(
+                const updated = await pgConnection.raw(
                   `UPDATE price SET amount = ?, raw_amount = jsonb_build_object('value', ?::text, 'precision', 20), updated_at = NOW()
-                   WHERE price_set_id = ? AND currency_code = ? AND deleted_at IS NULL`,
+                   WHERE price_set_id = ? AND currency_code = ? AND deleted_at IS NULL
+                   RETURNING id`,
                   [amount, amount, existingPriceSetId, currency]
                 );
+                // A price set can exist without a price in this currency (e.g. created empty with the variant)
+                if (!updated.rows?.length) {
+                  await pricingService.addPrices({
+                    priceSetId: existingPriceSetId,
+                    prices: [{ amount, currency_code: currency }],
+                  });
+                }
               } else {
                 const priceSet = await pricingService.createPriceSets({
                   prices: [{ amount, currency_code: currency }],

@@ -605,20 +605,32 @@ async function syncProductVariantsAndOptions(
       }
     }
 
+    // SKUs are unique across variants. If another variant already owns this SKU (e.g. an older
+    // product the same item was merged from), keep the current SKU instead of failing the whole
+    // webhook with a unique-constraint error, which would skip prices, images and details.
+    const skuOwner = await pg.raw(
+      `SELECT id FROM product_variant WHERE sku = ? AND id <> ? AND deleted_at IS NULL LIMIT 1`,
+      [varSku, varRes.rows?.[0]?.id ?? ""]
+    )
+    const skuTaken = skuOwner.rows?.length > 0
+    if (skuTaken) {
+      console.warn(`[Odoo Webhook] SKU "${varSku}" already used by variant ${skuOwner.rows[0].id}; keeping current SKU for Odoo variant ${varOdooId}`)
+    }
+
     if (varRes.rows?.length > 0) {
       vid = varRes.rows[0].id
       await pg.raw(
-        `UPDATE product_variant 
-         SET product_id = ?, title = ?, sku = ?, barcode = COALESCE(?, barcode), metadata = ?, allow_backorder = false, variant_rank = ?, updated_at = NOW() 
+        `UPDATE product_variant
+         SET product_id = ?, title = ?, sku = COALESCE(?, sku), barcode = COALESCE(?, barcode), metadata = ?, allow_backorder = false, variant_rank = ?, updated_at = NOW()
          WHERE id = ?`,
-        [prodId, varTitle, varSku, safeVarBarcode, JSON.stringify(varMetadata), idx, vid]
+        [prodId, varTitle, skuTaken ? null : varSku, safeVarBarcode, JSON.stringify(varMetadata), idx, vid]
       )
     } else {
       vid = genId("variant")
       await pg.raw(
-        `INSERT INTO product_variant (id, product_id, title, sku, barcode, manage_inventory, allow_backorder, variant_rank, metadata, created_at, updated_at) 
+        `INSERT INTO product_variant (id, product_id, title, sku, barcode, manage_inventory, allow_backorder, variant_rank, metadata, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, true, false, ?, ?, NOW(), NOW())`,
-        [vid, prodId, varTitle, varSku, safeVarBarcode, idx, JSON.stringify(varMetadata)]
+        [vid, prodId, varTitle, skuTaken ? `${templateSku}-v${varOdooId}` : varSku, safeVarBarcode, idx, JSON.stringify(varMetadata)]
       )
     }
 
