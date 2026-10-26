@@ -70,7 +70,7 @@ function inlineRows(html: string): string {
       return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-bottom:1px solid #edf2f7;">
         <tr>
           <td align="left" valign="top" style="padding:10px 12px 10px 0;font-size:14px;color:#64748b;white-space:nowrap;">${label}</td>
-          <td align="right" valign="top" style="padding:10px 0 10px 12px;font-size:${strong ? 15 : 14}px;color:#1a1a2e;${valueStyle}">${value}</td>
+          <td align="right" valign="top" style="word-break:break-word;padding:10px 0 10px 12px;font-size:${strong ? 15 : 14}px;color:#1a1a2e;${valueStyle}">${value}</td>
         </tr>
       </table>`;
     }
@@ -110,18 +110,31 @@ function baseLayout(content: string, previewText: string): string {
     .footer a { color: ${BRAND.color}; text-decoration: none; }
     h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
     p { font-size: 14px; line-height: 1.7; color: #475569; }
+    img { max-width: 100%; height: auto; }
+    @media only screen and (max-width: 480px) {
+      .wrapper { padding: 0 !important; }
+      .card { border-radius: 0 !important; box-shadow: none !important; }
+      .pad { padding-left: 18px !important; padding-right: 18px !important; }
+      .body { padding: 24px 18px !important; }
+      .footer { padding: 20px 18px !important; }
+      .order-box { padding: 6px 14px !important; margin: 16px 0 !important; border-radius: 10px !important; }
+      .items-table th, .items-table td { padding: 10px 6px !important; font-size: 13px !important; }
+      .btn { display: block !important; width: auto !important; margin: 24px 0 0 !important; padding: 14px 16px !important; }
+      h2 { font-size: 18px !important; }
+      .tracking-box .tracking-number { font-size: 16px !important; letter-spacing: 1px !important; word-break: break-all; }
+    }
   </style>
 </head>
 <body>
   <span style="display:none;max-height:0;overflow:hidden;">${previewText}</span>
   <div class="wrapper">
     <div class="card">
-      <div style="background:#ffffff;padding:24px 40px 20px;text-align:center;border-bottom:1px solid #e2e8f0;">
+      <div class="pad" style="background:#ffffff;padding:24px 40px 20px;text-align:center;border-bottom:1px solid #e2e8f0;">
         <a href="${BRAND.storeUrl}" style="text-decoration:none;">
           <img src="${BRAND.logo}" alt="${BRAND.name}" width="150" style="display:inline-block;width:150px;height:auto;border:0;" />
         </a>
       </div>
-      <div style="background:${BRAND.color};padding:16px 40px;text-align:center;color:#ffffff;font-size:18px;font-weight:700;">${previewText}</div>
+      <div class="pad" style="background:${BRAND.color};padding:16px 40px;text-align:center;color:#ffffff;font-size:18px;font-weight:700;">${previewText}</div>
       ${inlineRows(content)}
     </div>
     <div style="text-align:center;margin-top:20px;">
@@ -193,10 +206,9 @@ function orderConfirmedTemplate(data: OrderEmailData): { subject: string; html: 
     <div class="body">
       <span class="status-badge" style="background:#dcfce7;color:#16a34a;">✅ Order Confirmed</span>
       <h2>Thank you, ${data.customerName}!</h2>
-      <p style="margin-top:8px;">Your order <strong>#${data.displayId}</strong> has been confirmed and is being prepared.</p>
+      <p style="margin-top:8px;">Your order has been confirmed and is being prepared.</p>
 
       <div class="order-box">
-        <div class="order-row"><span>Order Number</span><span><strong>#${data.displayId}</strong></span></div>
         ${data.shippingAddress ? `<div class="order-row"><span>Delivery To</span><span>${data.shippingAddress}</span></div>` : ""}
         <div class="order-row"><span>Payment Method</span><span>${data.knetDetails ? "KNET Online Payment" : "Cash on Delivery"}</span></div>
       </div>
@@ -204,7 +216,7 @@ function orderConfirmedTemplate(data: OrderEmailData): { subject: string; html: 
       ${knetReceiptBlock}
 
       <table class="items-table">
-        <thead><tr><th>Item</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th></tr></thead>
+        <thead><tr><th>Item</th><th style="text-align:center;width:36px;">Qty</th><th style="text-align:right;white-space:nowrap;">Price</th></tr></thead>
         <tbody>${itemsRows}</tbody>
       </table>
 
@@ -221,8 +233,8 @@ function orderConfirmedTemplate(data: OrderEmailData): { subject: string; html: 
     </div>`;
 
   return {
-    subject: `✅ Order Confirmed — #${data.displayId} | ${BRAND.name}`,
-    html: baseLayout(content, `Your order #${data.displayId} is confirmed!`),
+    subject: `✅ Order Confirmed | ${BRAND.name}`,
+    html: baseLayout(content, `Your order is confirmed!`),
   };
 }
 
@@ -245,12 +257,11 @@ function orderShippedTemplate(data: OrderEmailData): { subject: string; html: st
     <div class="body">
       <span class="status-badge" style="background:#dbeafe;color:#1d4ed8;">🚚 Order Shipped</span>
       <h2>Your order is on its way!</h2>
-      <p style="margin-top:8px;">Great news, <strong>${data.customerName}</strong>! Your order <strong>#${data.displayId}</strong> has been shipped and is heading to you.</p>
+      <p style="margin-top:8px;">Great news, <strong>${data.customerName}</strong>! Your order has been shipped and is heading to you.</p>
 
       ${trackingSection}
 
       <div class="order-box">
-        <div class="order-row"><span>Order Number</span><span><strong>#${data.displayId}</strong></span></div>
         ${data.shippingAddress ? `<div class="order-row"><span>Delivering To</span><span>${data.shippingAddress}</span></div>` : ""}
         <div class="order-row"><span>Total</span><span>${formatPrice(data.total, data.currencyCode)}</span></div>
       </div>
@@ -262,8 +273,8 @@ function orderShippedTemplate(data: OrderEmailData): { subject: string; html: st
     </div>`;
 
   return {
-    subject: `🚚 Your Order #${data.displayId} Has Been Shipped! | ${BRAND.name}`,
-    html: baseLayout(content, `Order #${data.displayId} is on its way!`),
+    subject: `🚚 Your Order Has Been Shipped! | ${BRAND.name}`,
+    html: baseLayout(content, `Your order is on its way!`),
   };
 }
 
@@ -273,10 +284,9 @@ function orderDeliveredTemplate(data: OrderEmailData): { subject: string; html: 
     <div class="body">
       <span class="status-badge" style="background:#dcfce7;color:#16a34a;">🎉 Delivered!</span>
       <h2>Your order has arrived!</h2>
-      <p style="margin-top:8px;">Hi <strong>${data.customerName}</strong>, your order <strong>#${data.displayId}</strong> has been delivered. We hope you love your purchase!</p>
+      <p style="margin-top:8px;">Hi <strong>${data.customerName}</strong>, your order has been delivered. We hope you love your purchase!</p>
 
       <div class="order-box">
-        <div class="order-row"><span>Order Number</span><span><strong>#${data.displayId}</strong></span></div>
         ${data.shippingAddress ? `<div class="order-row"><span>Delivered To</span><span>${data.shippingAddress}</span></div>` : ""}
         <div class="order-row"><span>Total Paid</span><span>${formatPrice(data.total, data.currencyCode)}</span></div>
       </div>
@@ -291,8 +301,8 @@ function orderDeliveredTemplate(data: OrderEmailData): { subject: string; html: 
     </div>`;
 
   return {
-    subject: `🎉 Delivered! Order #${data.displayId} | ${BRAND.name}`,
-    html: baseLayout(content, `Order #${data.displayId} has been delivered!`),
+    subject: `🎉 Your Order Was Delivered! | ${BRAND.name}`,
+    html: baseLayout(content, `Your order has been delivered!`),
   };
 }
 
@@ -302,12 +312,11 @@ function orderCancelledTemplate(data: OrderEmailData): { subject: string; html: 
     <div class="body">
       <span class="status-badge" style="background:#fee2e2;color:#dc2626;">❌ Order Cancelled</span>
       <h2>Your order has been cancelled</h2>
-      <p style="margin-top:8px;">Hi <strong>${data.customerName}</strong>, your order <strong>#${data.displayId}</strong> has been cancelled.</p>
+      <p style="margin-top:8px;">Hi <strong>${data.customerName}</strong>, your order has been cancelled.</p>
 
       ${data.cancelledReason ? `<div class="order-box"><div class="order-row"><span>Reason</span><span>${data.cancelledReason}</span></div></div>` : ""}
 
       <div class="order-box">
-        <div class="order-row"><span>Order Number</span><span><strong>#${data.displayId}</strong></span></div>
         <div class="order-row"><span>Amount</span><span>${formatPrice(data.total, data.currencyCode)}</span></div>
       </div>
 
@@ -320,8 +329,8 @@ function orderCancelledTemplate(data: OrderEmailData): { subject: string; html: 
     </div>`;
 
   return {
-    subject: `❌ Order #${data.displayId} Cancelled | ${BRAND.name}`,
-    html: baseLayout(content, `Order #${data.displayId} has been cancelled`),
+    subject: `❌ Order Cancelled | ${BRAND.name}`,
+    html: baseLayout(content, `Your order has been cancelled`),
   };
 }
 
@@ -331,10 +340,9 @@ function orderOutForDeliveryTemplate(data: OrderEmailData): { subject: string; h
     <div class="body">
       <span class="status-badge" style="background:#fef9c3;color:#b45309;">📍 Out for Delivery</span>
       <h2>Your order is out for delivery!</h2>
-      <p style="margin-top:8px;">Hi <strong>${data.customerName}</strong>, your order <strong>#${data.displayId}</strong> is with our delivery team and will arrive today!</p>
+      <p style="margin-top:8px;">Hi <strong>${data.customerName}</strong>, your order is with our delivery team and will arrive today!</p>
 
       <div class="order-box">
-        <div class="order-row"><span>Order Number</span><span><strong>#${data.displayId}</strong></span></div>
         ${data.shippingAddress ? `<div class="order-row"><span>Delivering To</span><span>${data.shippingAddress}</span></div>` : ""}
         ${data.trackingNumber ? `<div class="order-row"><span>Tracking #</span><span>${data.trackingNumber}</span></div>` : ""}
         <div class="order-row"><span>Total</span><span>${formatPrice(data.total, data.currencyCode)}</span></div>
@@ -349,8 +357,8 @@ function orderOutForDeliveryTemplate(data: OrderEmailData): { subject: string; h
     </div>`;
 
   return {
-    subject: `📍 Out for Delivery — Order #${data.displayId} | ${BRAND.name}`,
-    html: baseLayout(content, `Order #${data.displayId} is out for delivery today!`),
+    subject: `📍 Out for Delivery | ${BRAND.name}`,
+    html: baseLayout(content, `Your order is out for delivery today!`),
   };
 }
 
