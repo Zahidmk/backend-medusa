@@ -3,7 +3,7 @@ import {
   SubscriberConfig,
 } from "@medusajs/framework";
 import { Modules, ContainerRegistrationKeys } from "@medusajs/framework/utils";
-import { sendOrderStatusEmail } from "../lib/email";
+import { sendOrderStatusEmail, computeOrderTotals } from "../lib/email";
 import { sendPushNotification } from "../lib/firebase";
 
 /**
@@ -22,7 +22,7 @@ export default async function orderPlacedHandler({
   try {
     // Get order details
     const order = await orderService.retrieveOrder(data.id, {
-      relations: ["items", "shipping_address"],
+      relations: ["items", "shipping_address", "shipping_methods"],
     });
 
     let recipientEmail = order.email;
@@ -54,10 +54,7 @@ export default async function orderPlacedHandler({
       quantity: item.quantity || 1,
       unit_price: item.unit_price || 0,
     }));
-    const subtotal = orderItems.reduce(
-      (sum, item) => sum + item.unit_price * item.quantity,
-      0
-    );
+    const { subtotal, shippingTotal, total } = computeOrderTotals(order);
 
     const shippingAddress = order.shipping_address
       ? [
@@ -121,7 +118,8 @@ export default async function orderPlacedHandler({
       displayId: order.display_id,
       items: orderItems,
       subtotal,
-      total: subtotal,
+      shippingTotal,
+      total,
       currencyCode: order.currency_code || "kwd",
       shippingAddress,
       knetDetails,

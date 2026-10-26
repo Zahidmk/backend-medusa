@@ -42,6 +42,21 @@ function formatPrice(amount: number, currencyCode = "kwd"): string {
   return `${symbol} ${value}`;
 }
 
+// Medusa v2 leaves order.total/subtotal unpopulated on retrieveOrder, so derive
+// them from the line items plus the order's shipping methods (retrieve with
+// relations ["items", "shipping_methods"]).
+export function computeOrderTotals(order: any): { subtotal: number; shippingTotal: number; total: number } {
+  const subtotal = (order.items || []).reduce(
+    (sum: number, item: any) => sum + Number(item.unit_price || 0) * Number(item.quantity || 1),
+    0
+  );
+  const shippingTotal = (order.shipping_methods || []).reduce(
+    (sum: number, m: any) => sum + Number(m.amount || 0),
+    0
+  );
+  return { subtotal, shippingTotal, total: subtotal + shippingTotal };
+}
+
 // ─── Base Email Layout ────────────────────────────────────────────────────────
 
 function baseLayout(content: string, previewText: string): string {
@@ -109,6 +124,7 @@ interface OrderEmailData {
   items: Array<{ title: string; quantity: number; unit_price: number }>;
   total: number;
   subtotal: number;
+  shippingTotal?: number;
   currencyCode: string;
   shippingAddress?: string;
   trackingNumber?: string;
@@ -174,7 +190,7 @@ function orderConfirmedTemplate(data: OrderEmailData): { subject: string; html: 
 
       <div class="order-box">
         <div class="order-row"><span>Subtotal</span><span>${formatPrice(data.subtotal, data.currencyCode)}</span></div>
-        <div class="order-row"><span>Shipping</span><span style="color:#16a34a;">Free</span></div>
+        <div class="order-row"><span>Shipping</span>${data.shippingTotal ? `<span>${formatPrice(data.shippingTotal, data.currencyCode)}</span>` : `<span style="color:#16a34a;">Free</span>`}</div>
         <div class="order-row"><span>Total</span><span>${formatPrice(data.total, data.currencyCode)}</span></div>
       </div>
 

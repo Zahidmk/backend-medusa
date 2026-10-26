@@ -1,6 +1,6 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework";
 import { Modules } from "@medusajs/framework/utils";
-import { sendOrderStatusEmail } from "../lib/email";
+import { sendOrderStatusEmail, computeOrderTotals } from "../lib/email";
 
 /**
  * Order Completed → Sends "Your order has been delivered" email
@@ -18,7 +18,7 @@ export default async function orderCompletedHandler({
     const orderService = container.resolve(Modules.ORDER);
 
     const order = await orderService.retrieveOrder(orderId, {
-      relations: ["items", "shipping_address"],
+      relations: ["items", "shipping_address", "shipping_methods"],
     });
 
     if (!order.email) {
@@ -49,8 +49,7 @@ export default async function orderCompletedHandler({
         quantity: item.quantity,
         unit_price: item.unit_price || 0,
       })),
-      total: Number(order.total || 0),
-      subtotal: Number(order.subtotal || 0),
+      ...computeOrderTotals(order),
       currencyCode: order.currency_code || "kwd",
       shippingAddress,
     });

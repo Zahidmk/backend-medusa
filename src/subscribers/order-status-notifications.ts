@@ -1,6 +1,6 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework";
 import { Modules } from "@medusajs/framework/utils";
-import { sendOrderStatusEmail, OrderEmailType } from "../lib/email";
+import { sendOrderStatusEmail, computeOrderTotals, OrderEmailType } from "../lib/email";
 
 /**
  * Order Status Email Notifications
@@ -29,7 +29,7 @@ async function resolveOrderAndSend(
     const orderService = container.resolve(Modules.ORDER);
 
     const order = await orderService.retrieveOrder(orderId, {
-      relations: ["items", "shipping_address"],
+      relations: ["items", "shipping_address", "shipping_methods"],
     });
 
     if (!order.email) {
@@ -61,18 +61,16 @@ async function resolveOrderAndSend(
       quantity: item.quantity,
       unit_price: item.unit_price || 0,
     }));
-    const calculatedSubtotal = orderItems.reduce(
-      (sum: number, item: { unit_price: number; quantity: number }) => sum + item.unit_price * item.quantity,
-      0
-    );
+    const { subtotal: calculatedSubtotal, shippingTotal, total } = computeOrderTotals(order);
 
     await sendOrderStatusEmail(emailType, order.email, {
       customerName,
       orderId: order.id,
       displayId: order.display_id,
       items: orderItems,
-      total: calculatedSubtotal,
+      total,
       subtotal: calculatedSubtotal,
+      shippingTotal,
       currencyCode: order.currency_code || "kwd",
       shippingAddress,
       trackingNumber: extraData.tracking_number || metadata.tracking_number,
