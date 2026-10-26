@@ -26,7 +26,7 @@ const BRAND = {
   name: "MarkaSouq",
   color: "#1D4ED8",        // Blue
   accentColor: "#2563EB",
-  logo: "https://markasouq.com/logo.png",
+  logo: `${process.env.STORE_URL || "https://markasouq.com"}/logo-white.png`,
   storeUrl: process.env.STORE_URL || "https://markasouq.com",
   supportEmail: process.env.SUPPORT_EMAIL || "support@markasouq.com",
   fromEmail: process.env.SMTP_FROM || "noreply@markasouq.com",
@@ -58,6 +58,24 @@ export function computeOrderTotals(order: any): { subtotal: number; shippingTota
 }
 
 // ─── Base Email Layout ────────────────────────────────────────────────────────
+
+// Many mail clients ignore CSS flex, which glued labels and values together
+// ("Order Number#65"). Render each label/value row as an inline-styled table.
+function inlineRows(html: string): string {
+  return html.replace(
+    /<div class="order-row"><span>([\s\S]*?)<\/span><span([^>]*)>([\s\S]*?)<\/span><\/div>/g,
+    (_m, label: string, valueAttrs: string, value: string) => {
+      const strong = /^(Total|Total Paid|Amount)$/.test(label.trim());
+      const valueStyle = (valueAttrs.match(/style="([^"]*)"/)?.[1] || "") + (strong ? ";font-weight:700;" : "");
+      return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-bottom:1px solid #edf2f7;">
+        <tr>
+          <td align="left" valign="top" style="padding:10px 12px 10px 0;font-size:14px;color:#64748b;white-space:nowrap;">${label}</td>
+          <td align="right" valign="top" style="padding:10px 0 10px 12px;font-size:${strong ? 15 : 14}px;color:#1a1a2e;${valueStyle}">${value}</td>
+        </tr>
+      </table>`;
+    }
+  );
+}
 
 function baseLayout(content: string, previewText: string): string {
   return `<!DOCTYPE html>
@@ -98,11 +116,13 @@ function baseLayout(content: string, previewText: string): string {
   <span style="display:none;max-height:0;overflow:hidden;">${previewText}</span>
   <div class="wrapper">
     <div class="card">
-      <div class="header">
-        <div style="color:#fff;font-size:26px;font-weight:800;letter-spacing:-0.5px;">${BRAND.name}</div>
-        <div class="header-title">${previewText}</div>
+      <div style="background:#ffffff;padding:24px 40px 20px;text-align:center;border-bottom:1px solid #e2e8f0;">
+        <a href="${BRAND.storeUrl}" style="text-decoration:none;">
+          <img src="${BRAND.logo}" alt="${BRAND.name}" width="150" style="display:inline-block;width:150px;height:auto;border:0;" />
+        </a>
       </div>
-      ${content}
+      <div style="background:${BRAND.color};padding:16px 40px;text-align:center;color:#ffffff;font-size:18px;font-weight:700;">${previewText}</div>
+      ${inlineRows(content)}
     </div>
     <div style="text-align:center;margin-top:20px;">
       <p style="font-size:12px;color:#94a3b8;">© ${new Date().getFullYear()} ${BRAND.name}. All rights reserved.</p>
@@ -150,7 +170,7 @@ function orderConfirmedTemplate(data: OrderEmailData): { subject: string; html: 
         `<tr>
           <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;">${item.title}</td>
           <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:center;">${item.quantity}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:600;">${formatPrice(item.unit_price * item.quantity, data.currencyCode)}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:600;white-space:nowrap;">${formatPrice(item.unit_price * item.quantity, data.currencyCode)}</td>
         </tr>`
     )
     .join("");
