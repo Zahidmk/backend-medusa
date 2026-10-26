@@ -1,5 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
+import { cancelOrderWorkflow } from "@medusajs/medusa/core-flows";
 import { sendOrderStatusEmail, OrderEmailType } from "../../../../lib/email";
 
 /**
@@ -179,6 +180,19 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
       [JSON.stringify(metadataUpdate), medusaOrderId]
     );
 
+    // An Odoo cancellation must also cancel the order in Medusa. The order.canceled
+    // subscriber then sends the customer email and records any refund owed, so the
+    // webhook's own email is skipped when this succeeds.
+    let cancelledInMedusa = false;
+    if (event_type === "order.cancelled" && existingOrder.status !== "canceled") {
+      try {
+        await cancelOrderWorkflow(req.scope).run({ input: { order_id: medusaOrderId } });
+        cancelledInMedusa = true;
+      } catch (cancelErr: any) {
+        console.error(`[Odoo Webhook] ⚠️ Could not cancel Medusa order ${medusaOrderId}: ${cancelErr.message}`);
+      }
+    }
+
     // ── Send customer email notification ────────────────────────────────────
     // Fetch order email + items from DB for the email
     const emailEventMap: Record<string, OrderEmailType | null> = {
@@ -190,7 +204,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
       "order.paid": null,
     };
 
-    const emailType = emailEventMap[event_type];
+    const emailType = cancelledInMedusa ? null : emailEventMap[event_type];
     if (emailType) {
       try {
         // Get order details for email

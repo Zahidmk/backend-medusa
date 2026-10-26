@@ -435,3 +435,130 @@ export async function sendOrderStatusEmail(
 
   console.log(`[Email] ✅ Sent ${type} email to ${toEmail} for order #${data.displayId} (MessageID: ${info.messageId || "sent"})`);
 }
+
+// ─── Return / Refund Request Emails ───────────────────────────────────────────
+
+export type ReturnEmailKind = "received" | "approved" | "rejected" | "refunded" | "admin_new";
+
+export interface ReturnEmailData {
+  customerName: string;
+  customerEmail: string;
+  displayId?: number | string; // shown to admin only
+  type: string; // cancel_item | cancel_order | return
+  items: Array<{ title: string; quantity: number }>;
+  reason?: string | null;
+  refundAmount: number;
+  currencyCode: string;
+  refundMethod: string; // none | bank_transfer | original_payment
+  paymentMethod: string; // cod | knet
+  bankLast4?: string;
+  adminNotes?: string | null;
+}
+
+const REQUEST_LABEL: Record<string, string> = {
+  cancel_item: "item cancellation",
+  cancel_order: "order cancellation",
+  return: "return",
+};
+
+function refundDestination(d: ReturnEmailData): string {
+  if (d.refundMethod === "bank_transfer") return `Bank transfer${d.bankLast4 ? ` (account ending ${d.bankLast4})` : ""}`;
+  if (d.refundMethod === "original_payment") return "Original payment method (KNET)";
+  return "";
+}
+
+function returnEmailTemplate(kind: ReturnEmailKind, d: ReturnEmailData): { subject: string; html: string } {
+  const label = REQUEST_LABEL[d.type] || "request";
+  const itemsList = d.items
+    .map((i) => `<li style="margin:4px 0;">${i.title} × ${i.quantity}</li>`)
+    .join("");
+  const refund = d.refundAmount > 0 ? formatPrice(d.refundAmount, d.currencyCode) : "";
+  const dest = refundDestination(d);
+
+  const badge: Record<ReturnEmailKind, { bg: string; fg: string; text: string }> = {
+    received: { bg: "#dbeafe", fg: "#1d4ed8", text: "📩 Request Received" },
+    approved: { bg: "#dcfce7", fg: "#16a34a", text: "✅ Request Approved" },
+    rejected: { bg: "#fee2e2", fg: "#dc2626", text: "❌ Request Declined" },
+    refunded: { bg: "#dcfce7", fg: "#16a34a", text: "💸 Refund Sent" },
+    admin_new: { bg: "#fef9c3", fg: "#b45309", text: "🔔 New Request" },
+  };
+
+  const intro: Record<ReturnEmailKind, string> = {
+    received: `We've received your ${label} request and our team will review it shortly.`,
+    approved: d.type === "return"
+      ? `Your return request has been approved. Our team will contact you to arrange the pickup${refund ? `, and your refund will follow once the item is received` : ""}.`
+      : `Your ${label} request has been approved.`,
+    rejected: `Unfortunately we couldn't approve your ${label} request.`,
+    refunded: `Your refund has been processed.`,
+    admin_new: `A customer submitted a ${label} request that needs review.`,
+  };
+
+  const content = `
+    <div class="body">
+      <span class="status-badge" style="background:${badge[kind].bg};color:${badge[kind].fg};">${badge[kind].text}</span>
+      <h2>${kind === "admin_new" ? `Order #${d.displayId} — ${d.customerName}` : `Hi ${d.customerName},`}</h2>
+      <p style="margin-top:8px;">${intro[kind]}</p>
+
+      <div class="order-box">
+        <div class="order-row"><span>Items</span><span><ul style="list-style:none;text-align:right;">${itemsList}</ul></span></div>
+        ${d.reason ? `<div class="order-row"><span>Reason</span><span>${d.reason}</span></div>` : ""}
+        ${refund ? `<div class="order-row"><span>Refund Amount</span><span><strong>${refund}</strong></span></div>` : ""}
+        ${dest ? `<div class="order-row"><span>Refund To</span><span>${dest}</span></div>` : ""}
+        ${kind === "admin_new" ? `<div class="order-row"><span>Payment</span><span>${d.paymentMethod === "knet" ? "KNET (paid online)" : "Cash on Delivery"}</span></div>` : ""}
+        ${kind === "admin_new" ? `<div class="order-row"><span>Customer</span><span>${d.customerEmail}</span></div>` : ""}
+        ${d.adminNotes && kind !== "admin_new" ? `<div class="order-row"><span>Note from our team</span><span>${d.adminNotes}</span></div>` : ""}
+      </div>
+
+      ${kind === "refunded" && d.refundMethod === "bank_transfer" ? `<p style="margin-top:8px;">Bank transfers usually reach your account within 3–5 business days.</p>` : ""}
+      ${kind === "admin_new" ? `<a href="${process.env.ADMIN_URL || "https://admin.markasouqs.com"}/app/return-requests" class="btn">Review in Admin</a>` : `<a href="${BRAND.storeUrl}/en/orders" class="btn">View My Orders</a>`}
+    </div>
+    <div class="footer">
+      <p>Questions? Reply to this email or contact us at <a href="mailto:${BRAND.supportEmail}">${BRAND.supportEmail}</a></p>
+    </div>`;
+
+  const subjects: Record<ReturnEmailKind, string> = {
+    received: `📩 We received your ${label} request | ${BRAND.name}`,
+    approved: `✅ Your ${label} request is approved | ${BRAND.name}`,
+    rejected: `Update on your ${label} request | ${BRAND.name}`,
+    refunded: `💸 Your refund has been processed | ${BRAND.name}`,
+    admin_new: `🔔 New ${label} request — order #${d.displayId}`,
+  };
+  const preview: Record<ReturnEmailKind, string> = {
+    received: "We received your request",
+    approved: "Your request is approved",
+    rejected: "Update on your request",
+    refunded: "Your refund has been processed",
+    admin_new: "New customer request",
+  };
+
+  return { subject: subjects[kind], html: baseLayout(content, preview[kind]) };
+}
+
+/** Sends a return/refund email. To the admin inbox for "admin_new", else to the customer. Never throws. */
+export async function sendReturnEmail(kind: ReturnEmailKind, data: ReturnEmailData): Promise<void> {
+  try {
+    const smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER;
+    const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
+    if (!smtpUser || !smtpPass) {
+      console.warn(`[Email] SMTP not configured — skipping return email "${kind}"`);
+      return;
+    }
+    const to = kind === "admin_new" ? process.env.ADMIN_NOTIFY_EMAIL || BRAND.supportEmail : data.customerEmail;
+    const template = returnEmailTemplate(kind, data);
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      port: parseInt(process.env.SMTP_PORT || "587"),
+      secure: process.env.SMTP_SECURE === "true",
+      auth: { user: smtpUser, pass: smtpPass },
+    });
+    await transporter.sendMail({
+      from: `"${process.env.SMTP_FROM_NAME || BRAND.name}" <${process.env.SMTP_FROM || smtpUser}>`,
+      to,
+      subject: template.subject,
+      html: template.html,
+    });
+    console.log(`[Email] ✅ Sent return email "${kind}" to ${to}`);
+  } catch (err: any) {
+    console.error(`[Email] ❌ Return email "${kind}" failed: ${err?.message || err}`);
+  }
+}

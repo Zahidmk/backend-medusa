@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { cancelOrderWorkflow } from "@medusajs/medusa/core-flows"
+import { getOrderFacts, loadOrder } from "../../../../../lib/return-requests"
 
 /**
  * POST /store/orders/:id/cancel
@@ -46,7 +47,16 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       })
     }
 
-    // Cancel using Medusa order workflow
+    // Once shipped, cancelling is no longer possible — the customer must use the return flow
+    const detailed = await loadOrder(req.scope, id)
+    if (detailed && getOrderFacts(detailed).shipped) {
+      return res.status(400).json({
+        message: "This order has already shipped. Once it is delivered you can request a return instead.",
+      })
+    }
+
+    // Cancel using Medusa order workflow. A refund-due record for KNET-paid orders and the
+    // Odoo cancellation are handled by the order.canceled subscriber.
     await cancelOrderWorkflow(req.scope).run({
       input: { order_id: id },
     })

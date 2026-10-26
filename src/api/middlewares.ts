@@ -258,6 +258,11 @@ export default defineMiddlewares({
       matcher: "/store/orders/*",
       middlewares: [authenticate("customer", ["session", "bearer"], { allowUnauthenticated: true })],
     },
+    // Customer cancel/return requests - must be authenticated and own the order
+    {
+      matcher: "/store/orders/*/requests",
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
     // Customer cancel order - must be authenticated and own the order
     {
       matcher: "/store/orders/*/cancel",

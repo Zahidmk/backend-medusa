@@ -84,6 +84,7 @@ export default defineConfig({
     media: { resolve: "./src/modules/media" },
     sellers: { resolve: "./src/modules/sellers" },
     warranty: { resolve: "./src/modules/warranty" },
+    return_request: { resolve: "./src/modules/return-request" },
     blog: { resolve: "./src/modules/blog" },
     "odoo_sync": { resolve: "./src/modules/odoo-sync" },
 
