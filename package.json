@@ -13,8 +13,8 @@
     "medusa"
   ],
   "scripts": {
-    "build": "medusa build && node scripts/apply-branding.js",
-    "build:admin": "medusa build && node scripts/apply-branding.js",
+    "build": "node scripts/patch-admin-kwd.js && medusa build && node scripts/apply-branding.js",
+    "build:admin": "node scripts/patch-admin-kwd.js && medusa build && node scripts/apply-branding.js",
     "start": "medusa start",
     "start:dev": "medusa develop",
     "dev": "node scripts/apply-branding.js && medusa develop",
